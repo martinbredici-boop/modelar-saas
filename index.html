@@ -896,8 +896,20 @@ auth.getRedirectResult().then(result => {
 
 async function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  try { await auth.signInWithRedirect(provider); }
-  catch(e) { document.getElementById('login-error').textContent = e.message; }
+  try {
+    await auth.signInWithPopup(provider);
+  } catch(e) {
+    if (e.code === 'auth/popup-blocked' || e.code === 'auth/popup-closed-by-user') {
+      // Fallback a redirect en mobile o si el popup fue bloqueado
+      try { await auth.signInWithRedirect(provider); } catch(e2) {
+        document.getElementById('login-error').textContent = e2.message;
+        document.getElementById('login-error').style.display = 'block';
+      }
+    } else {
+      document.getElementById('login-error').textContent = e.message;
+      document.getElementById('login-error').style.display = 'block';
+    }
+  }
 }
 
 async function registrarse() {
