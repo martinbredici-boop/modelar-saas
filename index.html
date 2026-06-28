@@ -814,12 +814,43 @@ let unsubs = [];
 const TIPO_DEFAULT = { Alquiler:'fijo', Servicios:'fijo', Sueldos:'fijo', 'Materias primas':'variable', Transporte:'variable', Herramientas:'variable', Consumibles:'variable', Varios:'variable' };
 
 // ── AUTH ──────────────────────────────────────────────────────
-auth.onAuthStateChanged(user => {
+auth.onAuthStateChanged(async user => {
   hide('screen-loading');
   unsubs.forEach(u => u()); unsubs = [];
-  if (!user) { show('screen-login'); hide('screen-owner'); hide('screen-employee'); return; }
+  if (!user) {
+    show('screen-login');
+    hide('screen-owner'); hide('screen-employee'); hide('screen-admin');
+    return;
+  }
   hide('screen-login');
-  if (OWNER_EMAILS.includes(user.email.toLowerCase())) {
+  // Superadmin
+  if (user.email.toLowerCase() === SUPERADMIN_EMAIL) {
+    hide('screen-owner'); hide('screen-employee');
+    show('screen-admin');
+    setupAdminListeners();
+    return;
+  }
+  // Buscar usuario en colección usuarios
+  const userDoc = await db.collection('usuarios').doc(user.uid).get();
+  if (!userDoc.exists) {
+    alert('Tu cuenta no esta habilitada. Contacta al administrador.');
+    auth.signOut(); return;
+  }
+  const userData = userDoc.data();
+  if (!userData.activa) {
+    alert('Tu cuenta esta deshabilitada. Contacta al administrador.');
+    auth.signOut(); return;
+  }
+  // Verificar empresa
+  const empresaDoc = await db.collection('empresas').doc(userData.empresaId).get();
+  if (!empresaDoc.exists || !empresaDoc.data().activa) {
+    alert('La suscripcion de tu empresa esta vencida. Contacta al administrador.');
+    auth.signOut(); return;
+  }
+  currentEmpresaId = userData.empresaId;
+  currentUserRol = userData.rol;
+  hide('screen-admin');
+  if (userData.rol === 'dueno') {
     hide('screen-employee'); show('screen-owner');
     setupOwnerListeners();
   } else {
