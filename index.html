@@ -807,11 +807,12 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 });
 
-function setEmpresaLogo(logoUrl) {
+function setEmpresaLogo(logoUrl, logoSize) {
   const src = logoUrl || B2_LOGO_SRC;
-  ['login-b2-logo','emp-b2-logo','owner-b2-logo'].forEach(id => {
+  const size = (logoSize || 80) + 'px';
+  ['emp-b2-logo','owner-b2-logo'].forEach(id => {
     const el = document.getElementById(id);
-    if (el) el.src = src;
+    if (el) { el.src = src; el.style.height = size; el.style.width = size; }
   });
 }
 
@@ -878,7 +879,7 @@ auth.onAuthStateChanged(async user => {
   }
   currentEmpresaId = userData.empresaId;
   currentUserRol = userData.rol;
-  setEmpresaLogo(empresaDoc.data().logoUrl || null);
+  setEmpresaLogo(empresaDoc.data().logoUrl || null, empresaDoc.data().logoSize || null);
   hide('screen-admin');
   if (userData.rol === 'dueno') {
     hide('screen-employee'); show('screen-owner');
@@ -2860,7 +2861,7 @@ async function adminEntrarEmpresa(empresaId, nombre) {
   hide('screen-admin');
   show('screen-owner');
   const empDoc = await db.collection('empresas').doc(empresaId).get();
-  setEmpresaLogo(empDoc.exists ? (empDoc.data().logoUrl || null) : null);
+  setEmpresaLogo(empDoc.exists ? (empDoc.data().logoUrl || null) : null, empDoc.exists ? (empDoc.data().logoSize || null) : null);
   // Mostrar botón para volver al admin
   const topBar = document.querySelector('#screen-owner .top-bar');
   if (topBar && !document.getElementById('btn-volver-admin')) {
