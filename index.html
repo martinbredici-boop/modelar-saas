@@ -2854,11 +2854,13 @@ async function adminEliminarUsuario(userId, email) {
   snap.docs.forEach(e => adminCargarUsuarios(e.id));
 }
 
-function adminEntrarEmpresa(empresaId, nombre) {
+async function adminEntrarEmpresa(empresaId, nombre) {
   currentEmpresaId = empresaId;
   currentUserRol = 'dueno';
   hide('screen-admin');
   show('screen-owner');
+  const empDoc = await db.collection('empresas').doc(empresaId).get();
+  setEmpresaLogo(empDoc.exists ? (empDoc.data().logoUrl || null) : null);
   // Mostrar botón para volver al admin
   const topBar = document.querySelector('#screen-owner .top-bar');
   if (topBar && !document.getElementById('btn-volver-admin')) {
