@@ -2731,7 +2731,8 @@ function setupAdminListeners() {
             <input type="checkbox" ${e.activa?'checked':''} onchange="adminToggleEmpresa('${e.id}',this.checked)" />
           </label>
         </div>
-        <div id="usuarios-${e.id}" style="font-size:13px;color:#555">Cargando usuarios...</div>
+        <button onclick="adminEntrarEmpresa('${e.id}','${e.nombre}')" style="width:100%;margin-top:8px;padding:8px;background:#f3f4f6;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500">Entrar como dueño →</button>
+        <div id="usuarios-${e.id}" style="font-size:13px;color:#555;margin-top:8px">Cargando usuarios...</div>
       </div>`).join('');
     // Cargar usuarios por empresa
     empresas.forEach(e => adminCargarUsuarios(e.id));
@@ -2768,6 +2769,24 @@ async function adminToggleEmpresa(empresaId, activa) {
 
 async function adminToggleUsuario(userId, activa) {
   await db.collection('usuarios').doc(userId).update({ activa });
+}
+
+function adminEntrarEmpresa(empresaId, nombre) {
+  currentEmpresaId = empresaId;
+  currentUserRol = 'dueno';
+  hide('screen-admin');
+  show('screen-owner');
+  // Mostrar botón para volver al admin
+  const topBar = document.querySelector('#screen-owner .top-bar');
+  if (topBar && !document.getElementById('btn-volver-admin')) {
+    const btn = document.createElement('button');
+    btn.id = 'btn-volver-admin';
+    btn.textContent = '← Admin';
+    btn.style.cssText = 'background:#1a1a1a;color:#fff;border:none;padding:6px 12px;border-radius:8px;cursor:pointer;font-size:12px;margin-right:8px';
+    btn.onclick = () => { hide('screen-owner'); show('screen-admin'); unsubs.forEach(u=>u()); unsubs=[]; };
+    topBar.querySelector('.user-pill').prepend(btn);
+  }
+  setupOwnerListeners();
 }
 
 async function adminCargarUsuarios(empresaId) {
