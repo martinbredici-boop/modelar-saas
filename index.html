@@ -847,13 +847,14 @@ auth.onAuthStateChanged(async user => {
     setupAdminListeners();
     return;
   }
-  // Buscar usuario en colección usuarios
-  const userDoc = await db.collection('usuarios').doc(user.uid).get();
-  if (!userDoc.exists) {
+  // Buscar usuario en colección usuarios por email
+  let userSnap = await db.collection('usuarios').where('email','==',user.email.toLowerCase()).get();
+  if (userSnap.empty) {
     alert('Tu cuenta no esta habilitada. Contacta al administrador.');
     auth.signOut(); return;
   }
-  const userData = userDoc.data();
+  const userDocRef = userSnap.docs[0];
+  const userData = userDocRef.data();
   if (!userData.activa) {
     alert('Tu cuenta esta deshabilitada. Contacta al administrador.');
     auth.signOut(); return;
@@ -884,7 +885,7 @@ function hide(id) { document.getElementById(id).style.display = 'none'; }
 
 async function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
-  try { await auth.signInWithPopup(provider); }
+  try { await auth.signInWithRedirect(provider); }
   catch(e) { document.getElementById('login-error').textContent = e.message; }
 }
 
