@@ -144,12 +144,29 @@
         <img id="login-b2-logo" style="height:80px;width:80px;object-fit:contain;border-radius:4px">
       </div>
       <div id="login-error" class="login-error"></div>
+      <!-- Google -->
+      <button onclick="loginGoogle()" style="width:100%;padding:12px;border:1.5px solid #ddd;border-radius:10px;background:#fff;font-size:15px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Ingresar con Google
+      </button>
+      <div style="text-align:center;font-size:12px;color:#aaa;margin-bottom:14px">— o con email y contraseña —</div>
       <label>Email</label>
       <input type="email" id="login-email" placeholder="tu@email.com" autocomplete="email" />
       <label>Contraseña</label>
       <input type="password" id="login-pass" placeholder="••••••••" autocomplete="current-password" />
       <div class="actions" style="margin-top:16px">
         <button class="btn btn-primary" onclick="iniciarSesion()" style="flex:1;padding:12px;font-size:15px">Ingresar</button>
+      </div>
+      <div style="text-align:center;margin-top:12px">
+        <span style="font-size:13px;color:#888">¿No tenés cuenta? </span>
+        <button onclick="document.getElementById('reg-panel').style.display=document.getElementById('reg-panel').style.display==='none'?'block':'none'" style="background:none;border:none;color:#7c3aed;font-size:13px;cursor:pointer;text-decoration:underline">Crear cuenta</button>
+      </div>
+      <div id="reg-panel" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #eee">
+        <label>Email</label>
+        <input type="email" id="reg-email" placeholder="tu@email.com" />
+        <label>Contraseña</label>
+        <input type="password" id="reg-pass" placeholder="Mínimo 6 caracteres" />
+        <button class="btn" onclick="registrarse()" style="width:100%;margin-top:10px">Crear cuenta</button>
       </div>
     </div>
   </div>
@@ -864,6 +881,20 @@ auth.onAuthStateChanged(async user => {
 
 function show(id) { document.getElementById(id).style.display = 'block'; }
 function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+async function loginGoogle() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  try { await auth.signInWithPopup(provider); }
+  catch(e) { document.getElementById('login-error').textContent = e.message; }
+}
+
+async function registrarse() {
+  const email = document.getElementById('reg-email').value.trim();
+  const pass = document.getElementById('reg-pass').value;
+  if (!email || !pass) { alert('Completá email y contraseña'); return; }
+  try { await auth.createUserWithEmailAndPassword(email, pass); }
+  catch(e) { document.getElementById('login-error').textContent = e.message; }
+}
 
 async function iniciarSesion() {
   const email = document.getElementById('login-email').value.trim();
@@ -2771,6 +2802,22 @@ async function adminToggleUsuario(userId, activa) {
   await db.collection('usuarios').doc(userId).update({ activa });
 }
 
+async function adminCambiarRol(userId, rolActual) {
+  const nuevoRol = rolActual === 'dueno' ? 'empleado' : 'dueno';
+  if (!confirm(`Cambiar rol a "${nuevoRol}"?`)) return;
+  await db.collection('usuarios').doc(userId).update({ rol: nuevoRol });
+  // Recargar usuarios de todas las empresas
+  const snap = await db.collection('empresas').get();
+  snap.docs.forEach(e => adminCargarUsuarios(e.id));
+}
+
+async function adminEliminarUsuario(userId, email) {
+  if (!confirm(`Eliminar usuario ${email}?`)) return;
+  await db.collection('usuarios').doc(userId).delete();
+  const snap = await db.collection('empresas').get();
+  snap.docs.forEach(e => adminCargarUsuarios(e.id));
+}
+
 function adminEntrarEmpresa(empresaId, nombre) {
   currentEmpresaId = empresaId;
   currentUserRol = 'dueno';
@@ -2796,15 +2843,19 @@ async function adminCargarUsuarios(empresaId) {
   if (snap.empty) { el.innerHTML = '<div style="color:#aaa;font-size:12px">Sin usuarios.</div>'; return; }
   el.innerHTML = snap.docs.map(d => {
     const u = d.data();
-    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-top:1px solid #f0f0f0">
-      <div>
-        <span style="font-weight:500">${u.email}</span>
-        <span style="font-size:11px;color:#aaa;margin-left:8px">${u.rol}</span>
+    return `<div style="padding:8px 0;border-top:1px solid #f0f0f0">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <span style="font-weight:500;font-size:13px">${u.email}</span>
+          <span style="font-size:11px;color:#aaa;margin-left:8px">${u.rol}</span>
+        </div>
+        <span style="font-size:12px;color:${u.activa?'#22c55e':'#ef4444'};font-weight:600">${u.activa?'Activo':'Inactivo'}</span>
       </div>
-      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px">
-        <span style="color:${u.activa?'#22c55e':'#ef4444'}">${u.activa?'Activo':'Inactivo'}</span>
-        <input type="checkbox" ${u.activa?'checked':''} onchange="adminToggleUsuario('${d.id}',this.checked)" />
-      </label>
+      <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <button onclick="adminToggleUsuario('${d.id}',${!u.activa})" style="padding:4px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:12px;cursor:pointer">${u.activa?'Desactivar':'Activar'}</button>
+        <button onclick="adminCambiarRol('${d.id}','${u.rol}')" style="padding:4px 10px;border:1px solid #ddd;border-radius:6px;background:#fff;font-size:12px;cursor:pointer">Cambiar rol</button>
+        <button onclick="adminEliminarUsuario('${d.id}','${u.email}')" style="padding:4px 10px;border:1px solid #fee2e2;border-radius:6px;background:#fff;color:#ef4444;font-size:12px;cursor:pointer">Eliminar</button>
+      </div>
     </div>`;
   }).join('');
 }
