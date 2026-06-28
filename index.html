@@ -2799,7 +2799,10 @@ function setupAdminListeners() {
             <input type="checkbox" ${e.activa?'checked':''} onchange="adminToggleEmpresa('${e.id}',this.checked)" />
           </label>
         </div>
-        <button onclick="adminEntrarEmpresa('${e.id}','${e.nombre}')" style="width:100%;margin-top:8px;padding:8px;background:#f3f4f6;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500">Entrar como dueño →</button>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button onclick="adminEntrarEmpresa('${e.id}','${e.nombre}')" style="flex:1;padding:8px;background:#f3f4f6;border:1px solid #ddd;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500">Entrar como dueño →</button>
+          <button onclick="adminEliminarEmpresa('${e.id}','${e.nombre}')" style="padding:8px 14px;background:#fff;border:1px solid #ef4444;color:#ef4444;border-radius:8px;cursor:pointer;font-size:13px;font-weight:500">Eliminar</button>
+        </div>
         <div id="usuarios-${e.id}" style="font-size:13px;color:#555;margin-top:8px">Cargando usuarios...</div>
       </div>`).join('');
     // Cargar usuarios por empresa
@@ -2873,6 +2876,17 @@ async function adminEntrarEmpresa(empresaId, nombre) {
     topBar.querySelector('.user-pill').prepend(btn);
   }
   setupOwnerListeners();
+}
+
+async function adminEliminarEmpresa(empresaId, nombre) {
+  if (!confirm(`¿Eliminar la empresa "${nombre}"? Se eliminarán también todos sus usuarios. Esta acción no se puede deshacer.`)) return;
+  // Eliminar usuarios de la empresa
+  const usersSnap = await db.collection('usuarios').where('empresaId','==',empresaId).get();
+  const batch = db.batch();
+  usersSnap.docs.forEach(d => batch.delete(d.ref));
+  batch.delete(db.collection('empresas').doc(empresaId));
+  await batch.commit();
+  alert(`Empresa "${nombre}" eliminada.`);
 }
 
 async function adminCargarUsuarios(empresaId) {
