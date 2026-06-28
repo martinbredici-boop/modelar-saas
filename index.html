@@ -804,6 +804,14 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 });
 
+function setEmpresaLogo(logoUrl) {
+  const src = logoUrl || B2_LOGO_SRC;
+  ['login-b2-logo','emp-b2-logo','owner-b2-logo'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.src = src;
+  });
+}
+
 // ── FIREBASE ──────────────────────────────────────────────────
 const firebaseConfig = {
   apiKey: "AIzaSyB-ZtFoJP2Y2Z652EFkay1Dn3pRCgDeMx4",
@@ -867,6 +875,7 @@ auth.onAuthStateChanged(async user => {
   }
   currentEmpresaId = userData.empresaId;
   currentUserRol = userData.rol;
+  setEmpresaLogo(empresaDoc.data().logoUrl || null);
   hide('screen-admin');
   if (userData.rol === 'dueno') {
     hide('screen-employee'); show('screen-owner');
