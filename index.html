@@ -883,6 +883,17 @@ auth.onAuthStateChanged(async user => {
 function show(id) { document.getElementById(id).style.display = 'block'; }
 function hide(id) { document.getElementById(id).style.display = 'none'; }
 
+// Capturar resultado del redirect de Google al volver a la página
+auth.getRedirectResult().then(result => {
+  // resultado manejado por onAuthStateChanged
+}).catch(e => {
+  if (e.code !== 'auth/no-auth-event') {
+    const errEl = document.getElementById('login-error');
+    if (errEl) { errEl.textContent = e.message; errEl.style.display = 'block'; }
+    console.error('Redirect error:', e);
+  }
+});
+
 async function loginGoogle() {
   const provider = new firebase.auth.GoogleAuthProvider();
   try { await auth.signInWithRedirect(provider); }
