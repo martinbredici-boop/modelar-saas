@@ -808,8 +808,8 @@ window.addEventListener('DOMContentLoaded', () => {
 });
 
 function setEmpresaLogo(logoUrl, logoSize) {
-  const src = logoUrl || B2_LOGO_SRC;
-  const size = (logoSize || 80) + 'px';
+  const src = logoUrl || MODELAR_LOGO_SRC;
+  const size = (logoSize || 160) + 'px';
   ['emp-b2-logo','owner-b2-logo'].forEach(id => {
     const el = document.getElementById(id);
     if (el) { el.src = src; el.style.height = size; el.style.width = size; }
