@@ -967,8 +967,8 @@ function setupOwnerListeners() {
     margenes = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>(a.orden||0)-(b.orden||0));
     renderMargenes(); calcular();
   }));
-  unsubs.push(edb().collection('presupuestos').orderBy('numero','desc').onSnapshot(snap => {
-    const lista = snap.docs.map(d => ({id:d.id,...d.data()}));
+  unsubs.push(edb().collection('presupuestos').onSnapshot(snap => {
+    const lista = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>(b.numero||0)-(a.numero||0));
     renderHistorialPresupuestos(lista);
     // set next number
     window._ptoNextNum = lista.length ? lista[0].numero + 1 : 304;
