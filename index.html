@@ -726,22 +726,41 @@
 
     <!-- Pedidos -->
     <div id="stock-pedidos" class="sub-section">
-      <div class="card">
-        <div class="card-header"><span class="card-title">Nuevo pedido</span></div>
-        <div class="row">
-          <div style="flex:2"><label>Cliente</label><input type="text" id="ped-cliente" placeholder="Nombre del cliente" /></div>
-          <div><label>Fecha entrega</label><input type="date" id="ped-fecha-entrega" /></div>
-        </div>
-        <label style="margin-top:12px">Notas</label>
-        <input type="text" id="ped-notas" placeholder="Opcional" />
-        <div style="margin-top:14px;font-weight:500;font-size:13px;margin-bottom:8px">Productos del pedido</div>
-        <div id="ped-items-form"></div>
-        <button class="btn" onclick="pedAgregarItem()" style="width:100%;margin-top:8px"><i class="ti ti-plus"></i> Agregar producto</button>
-        <div class="actions">
-          <button class="btn btn-primary" onclick="pedGuardar()" style="flex:1"><i class="ti ti-check"></i> Guardar pedido</button>
+      <!-- Sub-tabs pedidos -->
+      <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid #e5e7eb;padding-bottom:0">
+        <button id="ptab-nuevo" onclick="showPedTab('nuevo')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed;margin-bottom:-2px;color:#7c3aed">Nuevo</button>
+        <button id="ptab-enviados" onclick="showPedTab('enviados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Enviados</button>
+        <button id="ptab-confirmados" onclick="showPedTab('confirmados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Confirmados</button>
+        <button id="ptab-cancelados" onclick="showPedTab('cancelados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Cancelados</button>
+      </div>
+
+      <div id="ped-panel-nuevo">
+        <div class="card">
+          <div class="card-header"><span class="card-title">Nuevo pedido</span></div>
+          <div class="row">
+            <div style="flex:2"><label>Cliente</label><input type="text" id="ped-cliente" placeholder="Nombre del cliente" /></div>
+            <div><label>Fecha entrega</label><input type="date" id="ped-fecha-entrega" /></div>
+          </div>
+          <label style="margin-top:12px">Notas</label>
+          <input type="text" id="ped-notas" placeholder="Opcional" />
+          <div style="margin-top:14px;font-weight:500;font-size:13px;margin-bottom:8px">Productos del pedido</div>
+          <div id="ped-items-form"></div>
+          <button class="btn" onclick="pedAgregarItem()" style="width:100%;margin-top:8px"><i class="ti ti-plus"></i> Agregar producto</button>
+          <div class="actions">
+            <button class="btn btn-primary" onclick="pedGuardar()" style="flex:1"><i class="ti ti-check"></i> Guardar pedido</button>
+          </div>
         </div>
       </div>
-      <div id="owner-pedidos-lista"><div class="empty">Sin pedidos.</div></div>
+
+      <div id="ped-panel-enviados" style="display:none">
+        <div id="owner-pedidos-enviados"><div class="empty">Sin pedidos enviados.</div></div>
+      </div>
+      <div id="ped-panel-confirmados" style="display:none">
+        <div id="owner-pedidos-confirmados"><div class="empty">Sin pedidos confirmados.</div></div>
+      </div>
+      <div id="ped-panel-cancelados" style="display:none">
+        <div id="owner-pedidos-cancelados"><div class="empty">Sin pedidos cancelados.</div></div>
+      </div>
     </div>
 
     <!-- Cola de producción -->
@@ -2196,7 +2215,7 @@ async function pedConfirmarConversion() {
     cliente: p.cliente || '',
     fechaEntrega, notas,
     items,
-    estado: 'pendiente',
+    estado: 'enviado',
     fecha: new Date().toISOString(),
     presupuestoId: p.id,
     presupuestoNumero: p.numero
@@ -2494,7 +2513,7 @@ async function pedGuardar() {
   await edb().collection('pedidos').add({
     cliente, fechaEntrega, notas,
     items: pedItemsTemp,
-    estado: 'pendiente',
+    estado: 'enviado',
     fecha: new Date().toISOString()
   });
   document.getElementById('ped-cliente').value = '';
@@ -2502,6 +2521,7 @@ async function pedGuardar() {
   document.getElementById('ped-notas').value = '';
   pedItemsTemp = [];
   renderPedItemsForm();
+  showPedTab('enviados');
 }
 
 async function pedCambiarEstado(id, estado) {
@@ -2513,27 +2533,45 @@ async function pedEliminar(id) {
   await edb().collection('pedidos').doc(id).delete();
 }
 
+function showPedTab(tab) {
+  ['nuevo','enviados','confirmados','cancelados'].forEach(t => {
+    document.getElementById('ped-panel-'+t).style.display = t===tab ? '' : 'none';
+    const btn = document.getElementById('ptab-'+t);
+    btn.style.borderBottomColor = t===tab ? '#7c3aed' : 'transparent';
+    btn.style.color = t===tab ? '#7c3aed' : '#888';
+  });
+}
+
 function renderOwnerPedidos() {
-  const el = document.getElementById('owner-pedidos-lista'); if(!el) return;
-  const activos = pedidos.filter(p => p.estado !== 'completado');
-  const completados = pedidos.filter(p => p.estado === 'completado');
-  if (!pedidos.length) { el.innerHTML='<div class="empty">Sin pedidos registrados.</div>'; return; }
-  const estadoColor = { pendiente:'#f59e0b', en_produccion:'#3b82f6', completado:'#22c55e' };
-  const estadoLabel = { pendiente:'Pendiente', en_produccion:'En producción', completado:'Completado' };
+  const ENVIADOS_ESTADOS = ['enviado','pendiente','en_produccion'];
+  const enviados    = pedidos.filter(p => ENVIADOS_ESTADOS.includes(p.estado));
+  const confirmados = pedidos.filter(p => p.estado === 'confirmado' || p.estado === 'completado');
+  const cancelados  = pedidos.filter(p => p.estado === 'cancelado');
+
   const renderItemPed = (it) => {
     const prod = productos.find(x => x.id === it.productoId);
     const esUnidades = (it.tipo_stock || prod?.tipo_stock) === 'unidades';
     if (esUnidades) return `<div style="font-size:13px;padding:3px 0;color:#555">· ${it.productoNombre}${it.color?' ('+it.color+')':''}: <strong>${it.unidades||it.cant||0} unidades</strong></div>`;
     return `<div style="font-size:13px;padding:3px 0;color:#555">· ${it.productoNombre}${it.color?' ('+it.color+')':''}: <strong>${it.cajas||0} cajas</strong>${it.piezasSueltas?` + ${it.piezasSueltas} piezas`:''}  (${(it.m2||0).toFixed(2)} m²)</div>`;
   };
-  const renderPed = (p) => `
-    <div class="card" style="margin-bottom:10px;border-left:3px solid ${estadoColor[p.estado]||'#ddd'}">
+
+  const renderPed = (p, seccion) => {
+    const accentColor = seccion==='enviados'?'#f59e0b':seccion==='confirmados'?'#22c55e':'#ef4444';
+    const botonesAccion = seccion==='enviados' ? `
+      <button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','confirmado')" style="background:#22c55e;color:#fff;border-color:#22c55e" title="Confirmar"><i class="ti ti-shopping-cart"></i> Confirmar</button>
+      <button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','cancelado')" style="background:#ef4444;color:#fff;border-color:#ef4444" title="Cancelar"><i class="ti ti-x"></i> Cancelar</button>
+    ` : seccion==='confirmados' ? `
+      <button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','enviado')" title="Volver a enviados"><i class="ti ti-rotate-left"></i> Volver a enviados</button>
+    ` : `
+      <button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','enviado')" title="Volver a enviados"><i class="ti ti-rotate-left"></i> Volver a enviados</button>
+    `;
+    return `
+    <div class="card" style="margin-bottom:10px;border-left:3px solid ${accentColor}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
         <div>
           <div style="font-weight:600;font-size:15px">${p.cliente}</div>
           <div style="font-size:12px;color:#888">Entrega: ${fmtFecha(p.fechaEntrega)} ${p.notas?'· '+p.notas:''}</div>
         </div>
-        <span style="font-size:11px;font-weight:600;color:${estadoColor[p.estado]};background:${estadoColor[p.estado]}22;padding:3px 8px;border-radius:10px">${estadoLabel[p.estado]}</span>
       </div>
       <div style="font-size:13px;color:#777;margin-bottom:4px">${p.items.length} artículo${p.items.length!==1?'s':''} · <span style="cursor:pointer;color:#7c3aed;text-decoration:underline" onclick="this.closest('.card').querySelector('.ped-detail').style.display=this.closest('.card').querySelector('.ped-detail').style.display==='none'?'block':'none';this.textContent=this.closest('.card').querySelector('.ped-detail').style.display==='block'?'ocultar detalle':'ver detalle'">ver detalle</span></div>
       <div class="ped-detail" style="display:none;background:#f9f7f3;border-radius:8px;padding:8px;margin-bottom:8px">
@@ -2541,22 +2579,25 @@ function renderOwnerPedidos() {
         ${p.presupuestoNumero?`<div style="font-size:12px;color:#aaa;margin-top:6px">Presupuesto #${p.presupuestoNumero}</div>`:''}
       </div>
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">
-        ${p.estado==='pendiente'?`<button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','en_produccion')" style="background:#3b82f6;color:#fff;border-color:#3b82f6"><i class="ti ti-player-play"></i> En producción</button>`:''}
-        ${p.estado==='en_produccion'?`<button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','completado')" style="background:#22c55e;color:#fff;border-color:#22c55e"><i class="ti ti-check"></i> Completado</button>`:''}
-        ${p.estado==='en_produccion'||p.estado==='completado'?`<button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','pendiente')"><i class="ti ti-rotate-left"></i> Pendiente</button>`:''}
-        ${p.estado==='completado'?`<button class="btn btn-sm" onclick="pedCambiarEstado('${p.id}','en_produccion')" style="color:#3b82f6;border-color:#3b82f6"><i class="ti ti-player-play"></i> En producción</button>`:''}
+        ${botonesAccion}
         <button class="btn btn-sm" onclick="pedEliminar('${p.id}')" style="color:#e55;margin-left:auto"><i class="ti ti-trash"></i></button>
       </div>
     </div>`;
-  el.innerHTML = activos.map(renderPed).join('') +
-    (completados.length ? `<div style="font-size:12px;color:#aaa;margin:12px 0 6px;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Completados</div>` + completados.map(renderPed).join('') : '');
+  };
+
+  const elEnv = document.getElementById('owner-pedidos-enviados');
+  const elCon = document.getElementById('owner-pedidos-confirmados');
+  const elCan = document.getElementById('owner-pedidos-cancelados');
+  if(elEnv) elEnv.innerHTML = enviados.length ? enviados.map(p=>renderPed(p,'enviados')).join('') : '<div class="empty">Sin pedidos enviados.</div>';
+  if(elCon) elCon.innerHTML = confirmados.length ? confirmados.map(p=>renderPed(p,'confirmados')).join('') : '<div class="empty">Sin pedidos confirmados.</div>';
+  if(elCan) elCan.innerHTML = cancelados.length ? cancelados.map(p=>renderPed(p,'cancelados')).join('') : '<div class="empty">Sin pedidos cancelados.</div>';
 }
 
 // ── COLA DE PRODUCCIÓN ────────────────────────────────────────
 function calcColaItems() {
   // Para cada pedido activo, calcular cuánto falta producir vs stock disponible
   const activosPorProd = {};
-  pedidos.filter(p=>p.estado!=='completado').forEach(p => {
+  pedidos.filter(p=>p.estado==='enviado'||p.estado==='pendiente'||p.estado==='en_produccion').forEach(p => {
     p.items.forEach(it => {
       if (!activosPorProd[it.productoId]) activosPorProd[it.productoId] = { productoNombre:it.productoNombre, pedidos:[] };
       activosPorProd[it.productoId].pedidos.push({ ...it, cliente:p.cliente, fechaEntrega:p.fechaEntrega, estado:p.estado, pedidoId:p.id });
