@@ -1054,7 +1054,7 @@ function setupEmployeeListeners() {
 function syncProdSelect(selId) {
   const sel = document.getElementById(selId); if(!sel) return;
   const val = sel.value;
-  sel.innerHTML = '<option value="">— Seleccioná —</option>' + productos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  sel.innerHTML = '<option value="">— Seleccioná —</option>' + [...productos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
   if(val) sel.value = val;
 }
 
@@ -1244,7 +1244,7 @@ function renderIngredientesForm() {
     <div class="ing-row">
       <select onchange="ingTemp[${i}].matId=this.value">
         <option value="">Material</option>
-        ${materiales.map(m=>`<option value="${m.id}" ${m.id==ing.matId?'selected':''}>${m.nombre}</option>`).join('')}
+        ${[...materiales].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(m=>`<option value="${m.id}" ${m.id==ing.matId?'selected':''}>${m.nombre}</option>`).join('')}
       </select>
       <input type="number" placeholder="kg" value="${ing.qty||''}" inputmode="decimal" oninput="ingTemp[${i}].qty=parseFloat(this.value)||0" />
       <button class="btn btn-danger" onclick="quitarIng(${i})"><i class="ti ti-x"></i></button>
@@ -1362,7 +1362,7 @@ function renderProductos() {
 function actualizarSelectProducto() {
   const sel=document.getElementById('calc-producto'); if(!sel) return;
   const val=sel.value;
-  sel.innerHTML='<option value="">— Seleccioná un producto —</option>'+productos.map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
+  sel.innerHTML='<option value="">— Seleccioná un producto —</option>'+[...productos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(p=>`<option value="${p.id}">${p.nombre}</option>`).join('');
   if(val) sel.value=val;
 }
 async function agregarMargen() {
@@ -1651,7 +1651,7 @@ function empRenderIngForm() {
     <div class="ing-row">
       <select onchange="empIngTemp[${i}].matId=this.value">
         <option value="">Material</option>
-        ${materiales.map(m=>`<option value="${m.id}" ${m.id==ing.matId?'selected':''}>${m.nombre}</option>`).join('')}
+        ${[...materiales].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(m=>`<option value="${m.id}" ${m.id==ing.matId?'selected':''}>${m.nombre}</option>`).join('')}
       </select>
       <input type="number" placeholder="kg" value="${ing.qty||''}" inputmode="decimal" oninput="empIngTemp[${i}].qty=parseFloat(this.value)||0" />
       <button class="btn btn-danger" onclick="empQuitarIng(${i})"><i class="ti ti-x"></i></button>
@@ -1794,7 +1794,7 @@ function ptoRenderItems() {
   // datalist for autocompletar modelos
   let dl = document.getElementById('pto-modelos-list');
   if(!dl){ dl = document.createElement('datalist'); dl.id='pto-modelos-list'; document.body.appendChild(dl); }
-  dl.innerHTML = productos.map(p=>`<option value="${p.nombre}">`).join('');
+  dl.innerHTML = [...productos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(p=>`<option value="${p.nombre}">`).join('');
   ptoRecalcular();
 }
 
@@ -2541,7 +2541,7 @@ function renderPedItemsForm() {
       </div>
       <select onchange="pedItemProd(${i},this.value)" style="width:100%;margin-bottom:8px;padding:8px;border:1px solid #ddd;border-radius:6px;font-family:inherit">
         <option value="">— Seleccioná producto —</option>
-        ${productos.map(p=>`<option value="${p.id}" ${it.productoId===p.id?'selected':''}>${p.nombre}</option>`).join('')}
+        ${[...productos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(p=>`<option value="${p.id}" ${it.productoId===p.id?'selected':''}>${p.nombre}</option>`).join('')}
       </select>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div><label style="font-size:11px">Cajas</label>
