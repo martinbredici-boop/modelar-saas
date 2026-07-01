@@ -265,6 +265,7 @@
         <button class="sub-tab active" onclick="empShowStockSub('ingreso')">Producto terminado</button>
         <button class="sub-tab" onclick="empShowStockSub('materiasprimas')">Materias primas</button>
         <button class="sub-tab" onclick="empShowStockSub('cola')">Cola de producción</button>
+        <button class="sub-tab" onclick="empShowStockSub('pedidos')">Pedidos</button>
       </div></div>
 
       <div id="emp-stock-ingreso" class="sub-section active">
@@ -309,6 +310,19 @@
 
       <div id="emp-stock-cola" class="sub-section">
         <div id="emp-cola-lista"><div class="empty">Sin pedidos en curso.</div></div>
+      </div>
+
+      <div id="emp-stock-pedidos" class="sub-section">
+        <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid #e5e7eb;padding-bottom:0">
+          <button id="emp-ptab-confirmados" onclick="empShowPedTab('confirmados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed;margin-bottom:-2px;color:#7c3aed">Confirmados</button>
+          <button id="emp-ptab-entregados" onclick="empShowPedTab('entregados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Entregados</button>
+        </div>
+        <div id="emp-ped-panel-confirmados">
+          <div id="emp-ped-confirmados"><div class="empty">Sin pedidos confirmados.</div></div>
+        </div>
+        <div id="emp-ped-panel-entregados" style="display:none">
+          <div id="emp-ped-entregados"><div class="empty">Sin pedidos entregados.</div></div>
+        </div>
       </div>
     </div>
 
@@ -606,7 +620,9 @@
   <div id="main-presupuestos" class="main-section">
     <div class="sub-wrap"><div class="sub-tabs">
       <button class="sub-tab active" onclick="showSub('presupuestos','nuevo')">Nuevo</button>
-      <button class="sub-tab" onclick="showSub('presupuestos','historial')">Historial</button>
+      <button class="sub-tab" onclick="showSub('presupuestos','enviados')">Enviados</button>
+      <button class="sub-tab" onclick="showSub('presupuestos','confirmados')">Confirmados</button>
+      <button class="sub-tab" onclick="showSub('presupuestos','cancelados')">Cancelados</button>
     </div></div>
 
     <div id="presupuestos-nuevo" class="sub-section active">
@@ -668,8 +684,14 @@
       </div>
     </div>
 
-    <div id="presupuestos-historial" class="sub-section">
-      <div id="lista-presupuestos"><div class="empty">Sin presupuestos guardados.</div></div>
+    <div id="presupuestos-enviados" class="sub-section">
+      <div id="lista-presupuestos-enviados"><div class="empty">Sin presupuestos enviados.</div></div>
+    </div>
+    <div id="presupuestos-confirmados" class="sub-section">
+      <div id="lista-presupuestos-confirmados"><div class="empty">Sin presupuestos confirmados.</div></div>
+    </div>
+    <div id="presupuestos-cancelados" class="sub-section">
+      <div id="lista-presupuestos-cancelados"><div class="empty">Sin presupuestos cancelados.</div></div>
     </div>
   </div><!-- /presupuestos -->
 
@@ -728,38 +750,14 @@
     <div id="stock-pedidos" class="sub-section">
       <!-- Sub-tabs pedidos -->
       <div style="display:flex;gap:4px;margin-bottom:14px;border-bottom:2px solid #e5e7eb;padding-bottom:0">
-        <button id="ptab-nuevo" onclick="showPedTab('nuevo')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed;margin-bottom:-2px;color:#7c3aed">Nuevo</button>
-        <button id="ptab-enviados" onclick="showPedTab('enviados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Enviados</button>
-        <button id="ptab-confirmados" onclick="showPedTab('confirmados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Confirmados</button>
-        <button id="ptab-cancelados" onclick="showPedTab('cancelados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Cancelados</button>
+        <button id="ptab-confirmados" onclick="showPedTab('confirmados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid #7c3aed;margin-bottom:-2px;color:#7c3aed">Confirmados</button>
+        <button id="ptab-entregados" onclick="showPedTab('entregados')" style="padding:7px 16px;border:none;background:none;font-size:13px;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:#888">Entregados</button>
       </div>
-
-      <div id="ped-panel-nuevo">
-        <div class="card">
-          <div class="card-header"><span class="card-title">Nuevo pedido</span></div>
-          <div class="row">
-            <div style="flex:2"><label>Cliente</label><input type="text" id="ped-cliente" placeholder="Nombre del cliente" /></div>
-            <div><label>Fecha entrega</label><input type="date" id="ped-fecha-entrega" /></div>
-          </div>
-          <label style="margin-top:12px">Notas</label>
-          <input type="text" id="ped-notas" placeholder="Opcional" />
-          <div style="margin-top:14px;font-weight:500;font-size:13px;margin-bottom:8px">Productos del pedido</div>
-          <div id="ped-items-form"></div>
-          <button class="btn" onclick="pedAgregarItem()" style="width:100%;margin-top:8px"><i class="ti ti-plus"></i> Agregar producto</button>
-          <div class="actions">
-            <button class="btn btn-primary" onclick="pedGuardar()" style="flex:1"><i class="ti ti-check"></i> Guardar pedido</button>
-          </div>
-        </div>
+      <div id="ped-panel-confirmados">
+        <div id="owner-ped-confirmados"><div class="empty">Sin pedidos confirmados.</div></div>
       </div>
-
-      <div id="ped-panel-enviados" style="display:none">
-        <div id="owner-pedidos-enviados"><div class="empty">Sin pedidos enviados.</div></div>
-      </div>
-      <div id="ped-panel-confirmados" style="display:none">
-        <div id="owner-pedidos-confirmados"><div class="empty">Sin pedidos confirmados.</div></div>
-      </div>
-      <div id="ped-panel-cancelados" style="display:none">
-        <div id="owner-pedidos-cancelados"><div class="empty">Sin pedidos cancelados.</div></div>
+      <div id="ped-panel-entregados" style="display:none">
+        <div id="owner-ped-entregados"><div class="empty">Sin pedidos entregados.</div></div>
       </div>
     </div>
 
@@ -988,8 +986,8 @@ function setupOwnerListeners() {
   }));
   unsubs.push(edb().collection('presupuestos').onSnapshot(snap => {
     const lista = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>(b.numero||0)-(a.numero||0));
-    renderHistorialPresupuestos(lista);
-    // set next number
+    renderPresupuestosTabs(lista);
+    renderPedidosDesdePresupuestos(lista);
     window._ptoNextNum = lista.length ? lista[0].numero + 1 : 304;
     document.getElementById('pto-numero-badge').textContent = 'Nº ' + window._ptoNextNum;
   }));
@@ -1042,6 +1040,10 @@ function setupEmployeeListeners() {
   unsubs.push(edb().collection('pedidos').orderBy('fechaEntrega','asc').onSnapshot(snap => {
     pedidos = snap.docs.map(d => ({id:d.id,...d.data()}));
     empRenderCola();
+  }));
+  unsubs.push(edb().collection('presupuestos').onSnapshot(snap => {
+    const lista = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>(b.numero||0)-(a.numero||0));
+    renderPedidosDesdePresupuestos(lista);
   }));
 }
 
@@ -1604,10 +1606,8 @@ function empShowSub(sec) {
   document.getElementById('emp-sec-stock').classList.toggle('active', sec==='stock');
 }
 function empShowStockSub(sec) {
-  document.querySelectorAll('#emp-sec-stock .sub-tab').forEach((b,i)=>b.classList.toggle('active',['ingreso','materiasprimas','cola'][i]===sec));
-  document.getElementById('emp-stock-ingreso').classList.toggle('active', sec==='ingreso');
-  document.getElementById('emp-stock-materiasprimas').classList.toggle('active', sec==='materiasprimas');
-  document.getElementById('emp-stock-cola').classList.toggle('active', sec==='cola');
+  document.querySelectorAll('#emp-sec-stock .sub-tab').forEach((b,i)=>b.classList.toggle('active',['ingreso','materiasprimas','cola','pedidos'][i]===sec));
+  ['ingreso','materiasprimas','cola','pedidos'].forEach(s=>document.getElementById('emp-stock-'+s).classList.toggle('active',s===sec));
 }
 
 function empMatStockMostrarCampos() {
@@ -1833,10 +1833,10 @@ async function ptoSoloGuardar() {
   if(ptoEditandoId) {
     await edb().collection('presupuestos').doc(ptoEditandoId).update({...data, fechaGuardado: new Date().toISOString()});
   } else {
-    await edb().collection('presupuestos').add({...data, fechaGuardado: new Date().toISOString()});
+    await edb().collection('presupuestos').add({...data, estado:'enviado', fechaGuardado: new Date().toISOString()});
   }
   ptoCancelar();
-  showSub('presupuestos','historial');
+  showSub('presupuestos','enviados');
 }
 
 async function ptoGuardarYPDF() {
@@ -1846,10 +1846,14 @@ async function ptoGuardarYPDF() {
   if(ptoEditandoId) {
     await edb().collection('presupuestos').doc(ptoEditandoId).update({...data, fechaGuardado: new Date().toISOString()});
   } else {
-    await edb().collection('presupuestos').add({...data, fechaGuardado: new Date().toISOString()});
+    await edb().collection('presupuestos').add({...data, estado:'enviado', fechaGuardado: new Date().toISOString()});
   }
   ptoGenerarPDF(data);
   ptoCancelar();
+}
+
+async function ptoCambiarEstadoPto(id, estado) {
+  await edb().collection('presupuestos').doc(id).update({ estado });
 }
 
 function ptoCancelar() {
@@ -1888,10 +1892,25 @@ async function ptoEliminar(id) {
   await edb().collection('presupuestos').doc(id).delete();
 }
 
-function renderHistorialPresupuestos(lista) {
-  const el = document.getElementById('lista-presupuestos'); if(!el) return;
-  if(!lista.length){ el.innerHTML='<div class="empty">Sin presupuestos guardados.</div>'; return; }
-  el.innerHTML = lista.map(p=>`
+function renderPresupuestosTabs(lista) {
+  const enviados    = lista.filter(p => !p.estado || p.estado === 'enviado');
+  const confirmados = lista.filter(p => p.estado === 'confirmado');
+  const cancelados  = lista.filter(p => p.estado === 'cancelado');
+
+  const cardPto = (p, seccion) => {
+    const pJson = JSON.stringify(p).replace(/"/g,'&quot;');
+    const pJsonQ = JSON.stringify(p).replace(/'/g,"&#39;");
+    let botones = '';
+    if (seccion === 'enviados') {
+      botones = `
+        <button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','confirmado')" style="background:#22c55e;color:#fff;border-color:#22c55e" title="Confirmar"><i class="ti ti-shopping-cart"></i> Confirmar</button>
+        <button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','cancelado')" style="background:#ef4444;color:#fff;border-color:#ef4444" title="Cancelar"><i class="ti ti-x"></i> Cancelar</button>`;
+    } else if (seccion === 'confirmados') {
+      botones = `<button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','enviado')" title="Volver a enviados"><i class="ti ti-rotate-left"></i> Volver a enviados</button>`;
+    } else {
+      botones = `<button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','enviado')" title="Reactivar"><i class="ti ti-rotate-left"></i> Reactivar</button>`;
+    }
+    return `
     <div class="card" style="padding:12px 16px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
         <div style="flex:1;min-width:0">
@@ -1903,13 +1922,49 @@ function renderHistorialPresupuestos(lista) {
           <div style="margin-top:4px;font-size:14px;font-weight:600;color:#16a34a">${fmtMonto(p.total)}</div>
         </div>
         <div class="item-actions" style="flex-shrink:0">
-          <button class="btn btn-sm" onclick="ptoGenerarPDF(${JSON.stringify(p).replace(/"/g,'&quot;')})" title="PDF"><i class="ti ti-file-type-pdf"></i></button>
-          <button class="btn btn-sm" onclick='ptoAbrirModalPedido(${JSON.stringify(p).replace(/"/g,'&quot;')})' title="Convertir en pedido" style="color:#3b82f6;border-color:#3b82f6"><i class="ti ti-shopping-cart"></i></button>
-          <button class="btn btn-edit btn-sm" onclick='ptoEditar("${p.id}",${JSON.stringify(p).replace(/'/g,"&#39;")})' title="Editar"><i class="ti ti-edit"></i></button>
+          <button class="btn btn-sm" onclick="ptoGenerarPDF(${pJson})" title="PDF"><i class="ti ti-file-type-pdf"></i></button>
+          <button class="btn btn-edit btn-sm" onclick='ptoEditar("${p.id}",${pJsonQ})' title="Editar"><i class="ti ti-edit"></i></button>
           <button class="btn btn-danger btn-sm" onclick="ptoEliminar('${p.id}')" title="Eliminar"><i class="ti ti-trash"></i></button>
         </div>
       </div>
-    </div>`).join('');
+      <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${botones}</div>
+    </div>`;
+  };
+
+  const set = (id, items, seccion, emptyMsg) => {
+    const el = document.getElementById(id); if(!el) return;
+    el.innerHTML = items.length ? items.map(p=>cardPto(p,seccion)).join('') : `<div class="empty">${emptyMsg}</div>`;
+  };
+  set('lista-presupuestos-enviados',    enviados,    'enviados',    'Sin presupuestos enviados.');
+  set('lista-presupuestos-confirmados', confirmados, 'confirmados', 'Sin presupuestos confirmados.');
+  set('lista-presupuestos-cancelados',  cancelados,  'cancelados',  'Sin presupuestos cancelados.');
+}
+
+function renderPedidosDesdePresupuestos(lista) {
+  const confirmados = lista.filter(p => p.estado === 'confirmado');
+  const entregados  = lista.filter(p => p.estado === 'entregado');
+
+  const cardPed = (p, seccion) => {
+    const accion = seccion === 'confirmados'
+      ? `<button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','entregado')" style="background:#22c55e;color:#fff;border-color:#22c55e"><i class="ti ti-truck"></i> Entregado</button>`
+      : `<button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','confirmado')" title="Volver a confirmados"><i class="ti ti-rotate-left"></i> Volver</button>`;
+    return `
+    <div class="card" style="padding:12px 16px;border-left:3px solid ${seccion==='confirmados'?'#3b82f6':'#22c55e'}">
+      <div style="font-weight:600;font-size:15px">${p.cliente||'—'}</div>
+      <div style="font-size:12px;color:#888;margin-top:2px">Presupuesto Nº ${p.numero} · ${fmtFecha(p.fecha)}${p.tel?' · '+p.tel:''}</div>
+      <div style="font-size:14px;font-weight:600;color:#16a34a;margin-top:4px">${fmtMonto(p.total)}</div>
+      <div style="margin-top:10px">${accion}</div>
+    </div>`;
+  };
+
+  const ids = ['owner-ped-confirmados','owner-ped-entregados','emp-ped-confirmados','emp-ped-entregados'];
+  ids.forEach(id => {
+    const el = document.getElementById(id); if(!el) return;
+    const isEmp = id.startsWith('emp-');
+    const seccion = id.includes('confirmados') ? 'confirmados' : 'entregados';
+    const items = seccion === 'confirmados' ? confirmados : entregados;
+    el.innerHTML = items.length ? items.map(p=>cardPed(p,seccion)).join('') : `<div class="empty">Sin pedidos ${seccion}.</div>`;
+  });
 }
 
 function ptoGenerarPDF(data) {
@@ -2534,9 +2589,18 @@ async function pedEliminar(id) {
 }
 
 function showPedTab(tab) {
-  ['nuevo','enviados','confirmados','cancelados'].forEach(t => {
+  ['confirmados','entregados'].forEach(t => {
     document.getElementById('ped-panel-'+t).style.display = t===tab ? '' : 'none';
     const btn = document.getElementById('ptab-'+t);
+    btn.style.borderBottomColor = t===tab ? '#7c3aed' : 'transparent';
+    btn.style.color = t===tab ? '#7c3aed' : '#888';
+  });
+}
+
+function empShowPedTab(tab) {
+  ['confirmados','entregados'].forEach(t => {
+    document.getElementById('emp-ped-panel-'+t).style.display = t===tab ? '' : 'none';
+    const btn = document.getElementById('emp-ptab-'+t);
     btn.style.borderBottomColor = t===tab ? '#7c3aed' : 'transparent';
     btn.style.color = t===tab ? '#7c3aed' : '#888';
   });
