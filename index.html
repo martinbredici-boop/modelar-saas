@@ -2683,8 +2683,9 @@ function renderOwnerPedidos() {
 function calcColaItems() {
   const activosPorProd = {};
 
-  // Pedidos legacy (colección pedidos)
-  pedidos.filter(p=>p.estado==='enviado'||p.estado==='pendiente'||p.estado==='en_produccion').forEach(p => {
+  // Pedidos legacy (colección pedidos) — excluir los que vienen de presupuestos confirmados para no duplicar
+  const presupuestosConfirmadosIds = new Set(presupuestosCache.filter(x=>x.estado==='confirmado').map(x=>x.id));
+  pedidos.filter(p=>(p.estado==='enviado'||p.estado==='pendiente'||p.estado==='en_produccion')&&!presupuestosConfirmadosIds.has(p.presupuestoId)).forEach(p => {
     p.items.forEach(it => {
       if (!activosPorProd[it.productoId]) activosPorProd[it.productoId] = { productoNombre:it.productoNombre, pedidos:[] };
       activosPorProd[it.productoId].pedidos.push({ ...it, cliente:p.cliente, fechaEntrega:p.fechaEntrega, estado:p.estado, pedidoId:p.id });
