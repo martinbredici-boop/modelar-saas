@@ -853,7 +853,7 @@ const SUPERADMIN_EMAIL = 'martin.bredici@gmail.com';
 let currentEmpresaId = null, currentUserRol = null;
 
 // ── ESTADO ────────────────────────────────────────────────────
-let materiales = [], productos = [], margenes = [], operarios = [], gastos = [], produccion = [], stockData = [], pedidos = [], stockMateriales = [];
+let materiales = [], productos = [], margenes = [], operarios = [], gastos = [], produccion = [], stockData = [], pedidos = [], stockMateriales = [], presupuestosCache = [];
 let pedItemsTemp = [];
 let ingTemp = [], editandoId = null, editandoMatId = null, editandoOpId = null;
 let unsubs = [];
@@ -986,8 +986,10 @@ function setupOwnerListeners() {
   }));
   unsubs.push(edb().collection('presupuestos').onSnapshot(snap => {
     const lista = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>(b.numero||0)-(a.numero||0));
+    presupuestosCache = lista;
     renderPresupuestosTabs(lista);
     renderPedidosDesdePresupuestos(lista);
+    renderCola();
     window._ptoNextNum = lista.length ? lista[0].numero + 1 : 304;
     document.getElementById('pto-numero-badge').textContent = 'Nº ' + window._ptoNextNum;
   }));
@@ -1043,7 +1045,9 @@ function setupEmployeeListeners() {
   }));
   unsubs.push(edb().collection('presupuestos').onSnapshot(snap => {
     const lista = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>(b.numero||0)-(a.numero||0));
+    presupuestosCache = lista;
     renderPedidosDesdePresupuestos(lista);
+    empRenderCola();
   }));
 }
 
@@ -2659,12 +2663,35 @@ function renderOwnerPedidos() {
 
 // ── COLA DE PRODUCCIÓN ────────────────────────────────────────
 function calcColaItems() {
-  // Para cada pedido activo, calcular cuánto falta producir vs stock disponible
   const activosPorProd = {};
+
+  // Pedidos legacy (colección pedidos)
   pedidos.filter(p=>p.estado==='enviado'||p.estado==='pendiente'||p.estado==='en_produccion').forEach(p => {
     p.items.forEach(it => {
       if (!activosPorProd[it.productoId]) activosPorProd[it.productoId] = { productoNombre:it.productoNombre, pedidos:[] };
       activosPorProd[it.productoId].pedidos.push({ ...it, cliente:p.cliente, fechaEntrega:p.fechaEntrega, estado:p.estado, pedidoId:p.id });
+    });
+  });
+
+  // Presupuestos confirmados
+  presupuestosCache.filter(p=>p.estado==='confirmado').forEach(p => {
+    (p.items||[]).filter(it=>it.cant>0).forEach(it => {
+      const prod = productos.find(x=>x.nombre.toLowerCase().trim()===(it.modelo||'').toLowerCase().trim());
+      if (!prod) return;
+      const tipoStock = prod.tipo_stock || 'cajas_piezas';
+      const esUnidades = tipoStock === 'unidades';
+      const entry = {
+        productoId: prod.id,
+        productoNombre: prod.nombre,
+        color: it.color||'',
+        tipo_stock: tipoStock,
+        unidades: esUnidades ? (it.cant||0) : 0,
+        m2: esUnidades ? 0 : (it.cant||0),
+        cajas: 0, piezasSueltas: 0,
+        cliente: p.cliente, fechaEntrega: p.valido||p.fecha||'', estado:'confirmado', pedidoId:p.id
+      };
+      if (!activosPorProd[prod.id]) activosPorProd[prod.id] = { productoNombre:prod.nombre, pedidos:[] };
+      activosPorProd[prod.id].pedidos.push(entry);
     });
   });
   return Object.entries(activosPorProd).map(([prodId, data]) => {
