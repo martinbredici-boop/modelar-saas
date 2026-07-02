@@ -2152,15 +2152,22 @@ function renderSugerencias(sugerencias) {
               <div style="font-size:13px;color:#444;margin:4px 0">${s.mensaje}</div>
               <div style="font-size:12px;color:#aaa">${s.empleado} · ${fmtFecha(s.fecha.slice(0,10))}</div>
             </div>
-            ${s.estado === 'pendiente'
-              ? `<button class="btn btn-sm" onclick="marcarSugerenciaVista('${s.id}')" style="flex-shrink:0;white-space:nowrap"><i class="ti ti-check"></i> Marcar visto</button>`
-              : `<span class="badge" style="flex-shrink:0">Visto</span>`}
+            <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+              ${s.estado === 'pendiente'
+                ? `<button class="btn btn-sm" onclick="marcarSugerenciaVista('${s.id}')" style="white-space:nowrap"><i class="ti ti-check"></i> Marcar visto</button>`
+                : `<span class="badge" style="text-align:center">Visto</span>`}
+              <button class="btn btn-sm" onclick="eliminarSugerencia('${s.id}')" style="color:#e55;white-space:nowrap"><i class="ti ti-trash"></i> Eliminar</button>
+            </div>
           </div>
         </div>`).join('')}
     </div>`;
 }
 async function marcarSugerenciaVista(id) {
   await edb().collection('sugerencias').doc(id).update({estado: 'visto'});
+}
+async function eliminarSugerencia(id) {
+  if(!confirm('¿Eliminar esta sugerencia?')) return;
+  await edb().collection('sugerencias').doc(id).delete();
 }
 
 // ── SUGERENCIAS EMPLEADO ──────────────────────────────────────
