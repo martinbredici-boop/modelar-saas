@@ -625,7 +625,10 @@
 
     <div id="gastos-cargar" class="sub-section active">
       <div class="card">
-        <div class="card-header"><span class="card-title">Nuevo gasto</span></div>
+        <div class="card-header">
+          <span class="card-title" id="g-form-title">Nuevo gasto</span>
+          <button id="g-btn-cancelar" class="btn btn-sm" onclick="cancelarEditarGasto()" style="display:none">Cancelar</button>
+        </div>
         <div class="row">
           <div><label>Fecha</label><input type="date" id="g-fecha" /></div>
           <div><label>Monto ($)</label><input type="number" id="g-monto" placeholder="0" inputmode="numeric" /></div>
@@ -640,7 +643,7 @@
         <label>Descripción</label><input type="text" id="g-desc" placeholder="ej: Luz del mes, nafta..." />
         <label>Tipo</label>
         <select id="g-tipo"><option value="fijo">Fijo</option><option value="variable">Variable</option></select>
-        <div class="actions"><button class="btn btn-primary" onclick="guardarGasto()" style="flex:1">Registrar gasto</button></div>
+        <div class="actions"><button class="btn btn-primary" onclick="guardarGasto()" id="g-btn-guardar" style="flex:1">Registrar gasto</button></div>
       </div>
     </div>
 
@@ -1578,6 +1581,8 @@ function autoTipo() {
   const cat=document.getElementById('g-categoria').value;
   if(cat&&TIPO_DEFAULT[cat]) document.getElementById('g-tipo').value=TIPO_DEFAULT[cat];
 }
+let _gastoEditandoId = null;
+
 async function guardarGasto() {
   const fecha=document.getElementById('g-fecha').value;
   const monto=parseFloat(document.getElementById('g-monto').value);
@@ -1585,12 +1590,38 @@ async function guardarGasto() {
   const desc=document.getElementById('g-desc').value.trim();
   const tipo=document.getElementById('g-tipo').value;
   if(!fecha||isNaN(monto)||monto<=0||!categoria) return alert('Completá fecha, categoría y monto.');
-  await edb().collection('gastos').add({fecha,monto,categoria,desc,tipo});
+  if(_gastoEditandoId) {
+    await edb().collection('gastos').doc(_gastoEditandoId).update({fecha,monto,categoria,desc,tipo});
+  } else {
+    await edb().collection('gastos').add({fecha,monto,categoria,desc,tipo});
+  }
+  cancelarEditarGasto();
+}
+
+function editarGasto(g) {
+  _gastoEditandoId = g.id;
+  document.getElementById('g-fecha').value = g.fecha;
+  document.getElementById('g-monto').value = g.monto;
+  document.getElementById('g-categoria').value = g.categoria;
+  document.getElementById('g-desc').value = g.desc||'';
+  document.getElementById('g-tipo').value = g.tipo||'fijo';
+  document.getElementById('g-form-title').textContent = 'Editando gasto';
+  document.getElementById('g-btn-cancelar').style.display = 'block';
+  document.getElementById('g-btn-guardar').textContent = 'Guardar cambios';
+  showSub('gastos','cargar');
+  window.scrollTo(0,0);
+}
+
+function cancelarEditarGasto() {
+  _gastoEditandoId = null;
   ['g-monto','g-desc'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('g-categoria').value='';
   document.getElementById('g-tipo').value='fijo';
-  alert('Gasto registrado.');
+  document.getElementById('g-form-title').textContent = 'Nuevo gasto';
+  document.getElementById('g-btn-cancelar').style.display = 'none';
+  document.getElementById('g-btn-guardar').textContent = 'Registrar gasto';
 }
+
 async function eliminarGasto(id) {
   if(!confirm('¿Eliminar este gasto?')) return;
   await edb().collection('gastos').doc(id).delete();
@@ -1603,7 +1634,7 @@ function renderListaGastos() {
   if(!lista.length){el.innerHTML='<div class="empty">Sin gastos en ese período.</div>';return;}
   const total=lista.reduce((s,g)=>s+g.monto,0);
   el.innerHTML=`<div class="card" style="padding:10px 16px;margin-bottom:8px"><div style="display:flex;justify-content:space-between"><span class="list-detail">${lista.length} gastos</span><strong>${fmtMonto(total)}</strong></div></div>`+
-    lista.map(g=>`<div class="card" style="padding:10px 16px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div style="flex:1;min-width:0;"><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span class="list-name">${g.categoria}</span><span class="badge badge-${g.tipo}">${g.tipo}</span></div>${g.desc?`<div class="list-detail">${g.desc}</div>`:''}<div class="list-detail">${fmtFecha(g.fecha)}</div></div><div style="display:flex;align-items:center;gap:8px"><strong>${fmtMonto(g.monto)}</strong><button class="btn btn-danger btn-sm" onclick="eliminarGasto('${g.id}')"><i class="ti ti-trash"></i></button></div></div></div>`).join('');
+    lista.map(g=>`<div class="card" style="padding:10px 16px;"><div style="display:flex;justify-content:space-between;align-items:center;"><div style="flex:1;min-width:0;"><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;"><span class="list-name">${g.categoria}</span><span class="badge badge-${g.tipo}">${g.tipo}</span></div>${g.desc?`<div class="list-detail">${g.desc}</div>`:''}<div class="list-detail">${fmtFecha(g.fecha)}</div></div><div style="display:flex;align-items:center;gap:6px"><strong>${fmtMonto(g.monto)}</strong><button class="btn btn-edit btn-sm" onclick='editarGasto(${JSON.stringify(g).replace(/'/g,"&#39;")})' title="Editar"><i class="ti ti-edit"></i></button><button class="btn btn-danger btn-sm" onclick="eliminarGasto('${g.id}')" title="Eliminar"><i class="ti ti-trash"></i></button></div></div></div>`).join('');
 }
 function renderAnalisis() {
   const desde=document.getElementById('ga-desde').value;
