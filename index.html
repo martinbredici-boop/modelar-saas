@@ -2003,6 +2003,10 @@ async function ptoCambiarEstadoPto(id, estado) {
   await edb().collection('presupuestos').doc(id).update({ estado });
 }
 
+async function ptoGuardarAdelanto(id, adelanto) {
+  await edb().collection('presupuestos').doc(id).update({ adelanto });
+}
+
 function ptoCancelar() {
   ptoEditandoId = null; window._ptoEditNum = null;
   ptoItems = [];
@@ -2084,6 +2088,21 @@ function renderPresupuestosTabs(lista) {
         ${itemsDetalle.length?`<span style="cursor:pointer;color:#7c3aed;text-decoration:underline" onclick="const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none';this.textContent=d.style.display==='block'?'ocultar detalle':'ver detalle'">ver detalle</span>`:''}
       </div>
       <div id="${uid}" style="display:none;background:#f9f7f3;border-radius:8px;padding:8px;margin-top:6px">${itemsDetalle}</div>
+      ${seccion === 'confirmados' ? `
+      <div style="margin-top:12px;background:#f0fdf4;border-radius:10px;padding:10px 12px">
+        <div style="font-size:12px;font-weight:600;color:#16a34a;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Pagos</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="font-size:13px;color:#555;margin:0;min-width:120px">Adelanto recibido</label>
+          <input type="number" placeholder="$0" inputmode="numeric"
+            value="${p.adelanto||''}"
+            onchange="ptoGuardarAdelanto('${p.id}', parseFloat(this.value)||0)"
+            style="width:120px;padding:6px 10px;font-size:14px;font-weight:600;border:1px solid #bbf7d0;border-radius:8px;background:#fff;color:#16a34a" />
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid #dcfce7">
+          <span style="font-size:13px;color:#555">Saldo a pagar</span>
+          <strong style="font-size:15px;color:${((p.total||0)-(p.adelanto||0))<=0?'#16a34a':'#dc2626'}">${fmtMonto(Math.max(0,(p.total||0)-(p.adelanto||0)))}</strong>
+        </div>
+      </div>` : ''}
       <div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">${botones}</div>
     </div>`;
   };
@@ -2118,6 +2137,21 @@ function renderPedidosDesdePresupuestos(lista) {
       <div style="font-size:14px;font-weight:600;color:#16a34a;margin-top:4px">${fmtMonto(p.total)}</div>
       ${itemsDetalle ? `<div style="font-size:13px;color:#777;margin-top:6px"><span style="cursor:pointer;color:#7c3aed;text-decoration:underline" onclick="const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none';this.textContent=d.style.display==='block'?'ocultar detalle':'ver detalle'">ver detalle</span></div>
       <div id="${uid}" style="display:none;background:#f9f7f3;border-radius:8px;padding:8px;margin-top:6px">${itemsDetalle}</div>` : ''}
+      ${seccion === 'confirmados' ? `
+      <div style="margin-top:10px;background:#f0fdf4;border-radius:10px;padding:10px 12px">
+        <div style="font-size:12px;font-weight:600;color:#16a34a;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Pagos</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="font-size:13px;color:#555;margin:0;min-width:120px">Adelanto recibido</label>
+          <input type="number" placeholder="$0" inputmode="numeric"
+            value="${p.adelanto||''}"
+            onchange="ptoGuardarAdelanto('${p.id}', parseFloat(this.value)||0)"
+            style="width:120px;padding:6px 10px;font-size:14px;font-weight:600;border:1px solid #bbf7d0;border-radius:8px;background:#fff;color:#16a34a" />
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding-top:6px;border-top:1px solid #dcfce7">
+          <span style="font-size:13px;color:#555">Saldo a pagar</span>
+          <strong style="font-size:15px;color:${((p.total||0)-(p.adelanto||0))<=0?'#16a34a':'#dc2626'}">${fmtMonto(Math.max(0,(p.total||0)-(p.adelanto||0)))}</strong>
+        </div>
+      </div>` : ''}
       <div style="margin-top:10px">${accion}</div>
     </div>`;
   };
