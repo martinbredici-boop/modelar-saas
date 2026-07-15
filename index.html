@@ -320,8 +320,12 @@
         <div class="emp-preview-label">m² calculados automáticamente</div>
         <div id="ep-m2-val" class="emp-preview-value">—</div>
       </div>
+      <div id="emp-prod-edit-banner" class="editing-banner" style="display:none;margin-top:10px">
+        <span><i class="ti ti-edit"></i> Editando registro</span>
+        <button class="btn btn-sm" onclick="empCancelarEditarProd()">Cancelar</button>
+      </div>
       <div class="actions">
-        <button class="btn btn-primary" onclick="empGuardar()" style="flex:1;padding:13px;font-size:16px">
+        <button class="btn btn-primary" id="emp-guardar-btn" onclick="empGuardar()" style="flex:1;padding:13px;font-size:16px">
           <i class="ti ti-check"></i> Registrar
         </button>
       </div>
@@ -2396,6 +2400,8 @@ function empCalcM2() {
     preview.style.display='block';
   } else { preview.style.display='none'; }
 }
+let _empProdEditandoId = null;
+
 async function empGuardar() {
   const fecha=document.getElementById('ep-fecha').value;
   const pid=document.getElementById('ep-producto').value;
@@ -2403,17 +2409,59 @@ async function empGuardar() {
   if(!fecha||!pid||piezas<=0) return alert('Completá fecha, producto y cantidad de piezas.');
   const prod=productos.find(x=>x.id===pid);
   const m2=prod?parseFloat((piezas/prod.placasM2).toFixed(4)):0;
-  await edb().collection('produccion').add({fecha,productoId:pid,piezas,m2});
+  if(_empProdEditandoId) {
+    await edb().collection('produccion').doc(_empProdEditandoId).update({fecha,productoId:pid,piezas,m2});
+    _empProdEditandoId=null;
+    document.getElementById('emp-prod-edit-banner').style.display='none';
+    document.getElementById('emp-guardar-btn').textContent='Registrar';
+  } else {
+    await edb().collection('produccion').add({fecha,productoId:pid,piezas,m2,empleado:auth.currentUser?.email||'operario'});
+  }
   document.getElementById('ep-piezas').value='';
   document.getElementById('ep-preview').style.display='none';
 }
+
+function empEditarProduccion(r) {
+  _empProdEditandoId = r.id;
+  document.getElementById('ep-fecha').value = r.fecha;
+  document.getElementById('ep-producto').value = r.productoId;
+  document.getElementById('ep-piezas').value = Math.round(r.piezas);
+  empCalcM2();
+  document.getElementById('emp-prod-edit-banner').style.display='flex';
+  document.getElementById('emp-guardar-btn').textContent='Guardar cambios';
+  window.scrollTo(0,0);
+}
+
+function empCancelarEditarProd() {
+  _empProdEditandoId=null;
+  document.getElementById('ep-piezas').value='';
+  document.getElementById('ep-preview').style.display='none';
+  document.getElementById('emp-prod-edit-banner').style.display='none';
+  document.getElementById('emp-guardar-btn').textContent='Registrar';
+}
+
+async function empEliminarProduccion(id) {
+  if(!confirm('¿Eliminar este registro?')) return;
+  await edb().collection('produccion').doc(id).delete();
+}
+
 function empRenderHoy() {
   const h=document.getElementById('ep-fecha')?.value||hoy();
   const el=document.getElementById('emp-registros-hoy'); if(!el) return;
   const regs=produccion.filter(r=>r.fecha===h);
   if(!regs.length){el.innerHTML='<div class="empty" style="padding:1rem">Sin registros aún.</div>';return;}
   const totalPiezas=regs.reduce((s,r)=>s+r.piezas,0),totalM2=regs.reduce((s,r)=>s+r.m2,0);
-  el.innerHTML=regs.map(r=>{const p=productos.find(x=>x.id===r.productoId);return`<div class="prod-entry"><div class="list-name">${p?p.nombre:'—'}</div><div class="list-detail"><strong>${Math.round(r.piezas)}</strong> piezas → <strong>${r.m2.toFixed(2)}</strong> m²</div></div>`;}).join('')+
+  el.innerHTML=regs.map(r=>{
+    const p=productos.find(x=>x.id===r.productoId);
+    const rJson=JSON.stringify(r).replace(/'/g,"&#39;");
+    return`<div class="prod-entry" style="display:flex;justify-content:space-between;align-items:center">
+      <div><div class="list-name">${p?p.nombre:'—'}</div><div class="list-detail"><strong>${Math.round(r.piezas)}</strong> piezas → <strong>${r.m2.toFixed(2)}</strong> m²</div></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-edit btn-sm" onclick='empEditarProduccion(${rJson})'><i class="ti ti-edit"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="empEliminarProduccion('${r.id}')"><i class="ti ti-trash"></i></button>
+      </div>
+    </div>`;
+  }).join('')+
     `<div style="border-top:1px solid #e5e5e5;margin-top:10px;padding-top:10px;display:flex;justify-content:space-between;font-size:13px"><span style="color:#666">Total del día</span><span><strong>${Math.round(totalPiezas)}</strong> piezas · <strong>${totalM2.toFixed(2)}</strong> m²</span></div>`;
 }
 
