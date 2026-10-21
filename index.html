@@ -567,6 +567,18 @@
     </div>
 
     <div id="costos-productos" class="sub-section">
+      <div class="card solo-b2" style="display:none">
+        <div class="card-header"><span class="card-title">Productos importados</span></div>
+        <label style="margin-top:0">Tipo de cambio (ARS por USD)</label>
+        <div style="display:flex;gap:8px">
+          <input type="number" id="b2-tc-usd" placeholder="ej: 1450" step="0.01" inputmode="decimal" style="flex:1" />
+          <button class="btn btn-primary" onclick="b2GuardarTC()">Guardar</button>
+        </div>
+        <p class="list-detail" style="margin-top:6px">Los productos con costo en USD se convierten a pesos con este valor.</p>
+        <div id="b2-importar-wrap" style="display:none;margin-top:12px">
+          <button class="btn" id="b2-btn-importar" onclick="b2ImportarCatalogo()" style="width:100%"><i class="ti ti-download"></i> <span id="b2-importar-label">Importar catálogo Yingfei</span></button>
+        </div>
+      </div>
       <div class="card">
         <div id="editing-banner" style="display:none" class="editing-banner">
           <span><i class="ti ti-edit"></i> Editando producto</span>
@@ -574,6 +586,17 @@
         </div>
         <div class="card-header"><span class="card-title" id="form-title">Nuevo producto</span></div>
         <label>Nombre del producto</label><input type="text" id="prod-nombre" placeholder="ej: Granítico 10x10" />
+        <div class="solo-b2" style="display:none">
+          <div class="row">
+            <div><label>SKU</label><input type="text" id="prod-sku" placeholder="Automático (B2-0xx)" /></div>
+            <div><label>Costo USD/m²</label><input type="number" id="prod-costo-usd" placeholder="ej: 29.43" step="0.01" inputmode="decimal" /></div>
+          </div>
+          <label>Foto</label>
+          <div style="display:flex;align-items:center;gap:10px">
+            <img id="prod-foto-preview" style="display:none;width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #eee" />
+            <input type="file" id="prod-foto" accept="image/*" onchange="prodFotoElegida(this)" style="flex:1" />
+          </div>
+        </div>
         <div class="row">
           <div><label>Piezas por maquinada</label><input type="number" id="prod-batch" placeholder="800" inputmode="numeric" /></div>
           <div><label>Placas por m²</label><input type="number" id="prod-placas-m2" placeholder="6.5" step="0.1" inputmode="decimal" /></div>
@@ -971,6 +994,12 @@ function edb() { return db.collection('empresas').doc(currentEmpresaId); }
 const SUPERADMIN_EMAIL = 'martin.bredici@gmail.com';
 let currentEmpresaId = null, currentUserRol = null;
 
+// ── B2 REVESTIMIENTOS: productos importados (SKU, costo USD, foto) ──
+const B2_EMPRESA_ID = 'YfNYSFmj9Ix8iL4vCN31';
+const B2_CATALOGO_URL = 'catalogos/b2-yingfei-2026-10.json';
+function esB2() { return currentEmpresaId === B2_EMPRESA_ID; }
+let tcUsd = 0, prodFotoNueva = null, prodFotoActual = null;
+
 // ── ESTADO ────────────────────────────────────────────────────
 let materiales = [], productos = [], margenes = [], operarios = [], gastos = [], produccion = [], stockData = [], pedidos = [], stockMateriales = [], presupuestosCache = [];
 let pedItemsTemp = [];
@@ -1093,6 +1122,14 @@ function setupOwnerListeners() {
   unsubs.push(edb().collection('productos').onSnapshot(snap => {
     productos = snap.docs.map(d => ({id:d.id,...d.data()}));
     renderProductos(); actualizarSelectProducto(); syncProdSelect('p-producto'); syncProdSelect('owner-stock-producto');
+    b2ActualizarBotonImportar();
+  }));
+  tcUsd = 0;
+  document.querySelectorAll('.solo-b2').forEach(el => el.style.display = esB2() ? '' : 'none');
+  if(esB2()) unsubs.push(edb().collection('config').doc('general').onSnapshot(doc => {
+    tcUsd = (doc.exists && doc.data().tcUsd) || 0;
+    document.getElementById('b2-tc-usd').value = tcUsd || '';
+    renderProductos(); calcular();
   }));
   unsubs.push(edb().collection('margenes').onSnapshot(snap => {
     if(snap.empty) {
@@ -1376,6 +1413,7 @@ function duplicarProducto(id) {
   const p=productos.find(x=>x.id===id); if(!p) return;
   editandoId=null;
   document.getElementById('prod-nombre').value='Copia de '+p.nombre;
+  b2CargarCampos(p, true);
   document.getElementById('prod-batch').value=p.batch;
   document.getElementById('prod-placas-m2').value=p.placasM2;
   document.getElementById('prod-m2dia').value=p.m2dia||'';
@@ -1394,6 +1432,7 @@ function editarProducto(id) {
   const p=productos.find(x=>x.id===id); if(!p) return;
   editandoId=id;
   document.getElementById('prod-nombre').value=p.nombre;
+  b2CargarCampos(p, false);
   document.getElementById('prod-batch').value=p.batch;
   document.getElementById('prod-placas-m2').value=p.placasM2;
   document.getElementById('prod-m2dia').value=p.m2dia||'';
@@ -1413,6 +1452,7 @@ function cancelarEdicion() {
   ['prod-nombre','prod-batch','prod-placas-m2','prod-m2dia','prod-piezas-caja','prod-m2-caja','prod-costo-manual'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('prod-tipo-stock').value='cajas_piezas';
   prodToggleStockFields();
+  b2LimpiarCampos();
   document.getElementById('editing-banner').style.display='none';
   document.getElementById('form-title').textContent='Nuevo producto';
   document.getElementById('btn-guardar').textContent='Guardar producto';
@@ -1434,6 +1474,10 @@ async function guardarProducto() {
   const tipo_stock = document.getElementById('prod-tipo-stock').value;
   const ings=ingTemp.filter(i=>i.matId&&i.qty>0);
   const data={nombre,batch,placasM2,m2dia,piezas_por_caja,m2_por_caja,costo_manual,tipo_stock,ingredientes:ings};
+  if(esB2()) {
+    try { Object.assign(data, await b2DatosProducto()); }
+    catch(e) { return alert('No se pudo subir la foto: '+e.message); }
+  }
   if(editandoId) {
     await edb().collection('productos').doc(editandoId).update(data);
     cancelarEdicion();
@@ -1441,15 +1485,108 @@ async function guardarProducto() {
     await edb().collection('productos').add(data);
     ingTemp=[];
     ['prod-nombre','prod-batch','prod-placas-m2','prod-m2dia','prod-piezas-caja','prod-m2-caja'].forEach(id=>document.getElementById(id).value='');
+    b2LimpiarCampos();
     renderIngredientesForm();
   }
+}
+
+// ── B2: campos extra del producto, tipo de cambio e importación ──
+function b2CargarCampos(p, duplicado) {
+  if(!esB2()) return;
+  document.getElementById('prod-sku').value = duplicado ? '' : (p.sku||'');
+  document.getElementById('prod-costo-usd').value = p.costo_usd||'';
+  document.getElementById('prod-foto').value = '';
+  prodFotoNueva = null; prodFotoActual = p.fotoUrl||null;
+  const prev = document.getElementById('prod-foto-preview');
+  prev.src = prodFotoActual||''; prev.style.display = prodFotoActual ? '' : 'none';
+}
+function b2LimpiarCampos() {
+  if(!esB2()) return;
+  ['prod-sku','prod-costo-usd','prod-foto'].forEach(id=>document.getElementById(id).value='');
+  prodFotoNueva = null; prodFotoActual = null;
+  document.getElementById('prod-foto-preview').style.display = 'none';
+}
+function b2SiguienteSku() {
+  const nums = productos.map(p=>/^B2-(\d+)$/.exec(p.sku||'')).filter(Boolean).map(m=>parseInt(m[1],10));
+  return 'B2-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3,'0');
+}
+// Achica la imagen a 600px máx. y la devuelve como data URL JPEG
+function b2ReducirImagen(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 600/Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width*k); c.height = Math.round(img.height*k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(img.src);
+      resolve(c.toDataURL('image/jpeg', 0.82));
+    };
+    img.onerror = () => reject(new Error('imagen inválida'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function prodFotoElegida(input) {
+  const file = input.files[0]; if(!file) return;
+  prodFotoNueva = await b2ReducirImagen(file);
+  const prev = document.getElementById('prod-foto-preview');
+  prev.src = prodFotoNueva; prev.style.display = '';
+}
+async function b2SubirFoto(dataUrl, sku) {
+  const ref = storage.ref(`productos/${currentEmpresaId}/${sku}_${Date.now()}.jpg`);
+  await ref.putString(dataUrl, 'data_url');
+  return ref.getDownloadURL();
+}
+async function b2DatosProducto() {
+  const sku = document.getElementById('prod-sku').value.trim() || b2SiguienteSku();
+  const datos = { sku, costo_usd: parseFloat(document.getElementById('prod-costo-usd').value)||0 };
+  if(prodFotoNueva) datos.fotoUrl = await b2SubirFoto(prodFotoNueva, sku);
+  else if(prodFotoActual) datos.fotoUrl = prodFotoActual;
+  return datos;
+}
+async function b2GuardarTC() {
+  const tc = parseFloat(document.getElementById('b2-tc-usd').value)||0;
+  if(tc<=0) return alert('Ingresá un tipo de cambio válido.');
+  await edb().collection('config').doc('general').set({tcUsd: tc}, {merge: true});
+}
+function b2ActualizarBotonImportar() {
+  const wrap = document.getElementById('b2-importar-wrap'); if(!wrap || !esB2()) return;
+  fetch(B2_CATALOGO_URL).then(r=>r.json()).then(cat => {
+    const faltan = cat.filter(c => !productos.some(p => p.sku === c.sku)).length;
+    wrap.style.display = faltan ? '' : 'none';
+    document.getElementById('b2-importar-label').textContent = `Importar catálogo Yingfei (${faltan} producto${faltan>1?'s':''})`;
+  }).catch(() => { wrap.style.display = 'none'; });
+}
+async function b2ImportarCatalogo() {
+  const btn = document.getElementById('b2-btn-importar');
+  const cat = await (await fetch(B2_CATALOGO_URL)).json();
+  const nuevos = cat.filter(c => !productos.some(p => p.sku === c.sku));
+  if(!nuevos.length) return alert('El catálogo ya está importado.');
+  if(!confirm(`Se van a crear ${nuevos.length} productos con foto y costo USD (FOB ×3). ¿Continuar?`)) return;
+  btn.disabled = true;
+  try {
+    for(const [i, c] of nuevos.entries()) {
+      document.getElementById('b2-importar-label').textContent = `Importando ${i+1} de ${nuevos.length}…`;
+      const fotoUrl = await b2SubirFoto(c.foto, c.sku);
+      await edb().collection('productos').add({
+        nombre: c.nombre, sku: c.sku, codigoProveedor: c.codigoProveedor, proveedor: c.proveedor,
+        descripcion: c.descripcion, fob_usd: c.fob_usd, costo_usd: c.costo_usd, fotoUrl,
+        batch: 1, placasM2: 1, m2dia: 0, piezas_por_caja: c.piezas_por_caja, m2_por_caja: c.m2_por_caja,
+        costo_manual: 0, tipo_stock: 'cajas_piezas', ingredientes: []
+      });
+    }
+    alert(`Listo: se importaron ${nuevos.length} productos.`);
+  } catch(e) {
+    alert('Error al importar: '+e.message+'\nPodés volver a tocar el botón para continuar con los que faltan.');
+  }
+  btn.disabled = false;
 }
 async function eliminarProducto(id) {
   if(!confirm('¿Eliminar este producto?')) return;
   await edb().collection('productos').doc(id).delete();
 }
 function calcularCostoProducto(p) {
-  const extra = p.costo_manual||0;
+  const extra = (p.costo_manual||0) + (p.costo_usd||0)*tcUsd;
   if(!p.ingredientes?.length) return extra||null;
   let total=0;
   for(const ing of p.ingredientes){const mat=materiales.find(m=>m.id==ing.matId);if(!mat)return null;total+=precioPorKg(mat)*ing.qty;}
@@ -1460,12 +1597,17 @@ function renderProductos() {
   if(!productos.length){el.innerHTML='<div class="empty">Aún no hay productos.</div>';return;}
   el.innerHTML=[...productos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(p=>{
     const costo=calcularCostoProducto(p);
+    const importado = esB2() && (p.sku || p.costo_usd || p.fotoUrl);
     return `<div class="card" style="padding:12px 16px;">
       <div style="display:flex;justify-content:space-between;align-items:center;">
+        ${importado&&p.fotoUrl?`<img src="${p.fotoUrl}" loading="lazy" style="width:52px;height:52px;object-fit:cover;border-radius:6px;margin-right:12px;flex-shrink:0" />`:''}
         <div style="flex:1;min-width:0;">
           <div class="list-name">${p.nombre}</div>
-          <div class="list-detail">${p.ingredientes.length} ingr. · batch ${p.batch} · ${p.placasM2} pl/m²${p.m2dia?' · '+p.m2dia+' m²/día':''}</div>
-          ${costo!==null?`<div class="list-detail">Costo mat/m²: <strong>$${costo.toFixed(2)}</strong></div>`:''}
+          ${importado
+            ?`<div class="list-detail">${p.sku?'SKU '+p.sku:''}${p.codigoProveedor?' · Prov. '+p.codigoProveedor:''}${p.m2_por_caja?' · '+p.m2_por_caja+' m²/caja':''}</div>
+              ${p.costo_usd?`<div class="list-detail">Costo/m²: <strong>USD ${p.costo_usd.toFixed(2)}</strong>${tcUsd?` · <strong>$${costo.toLocaleString('es-AR',{maximumFractionDigits:0})}</strong>`:' · cargá el tipo de cambio'}</div>`:''}`
+            :`<div class="list-detail">${p.ingredientes.length} ingr. · batch ${p.batch} · ${p.placasM2} pl/m²${p.m2dia?' · '+p.m2dia+' m²/día':''}</div>
+              ${costo!==null?`<div class="list-detail">Costo mat/m²: <strong>$${costo.toFixed(2)}</strong></div>`:''}`}
         </div>
         <div class="item-actions">
           <button class="btn" onclick="duplicarProducto('${p.id}')" title="Duplicar"><i class="ti ti-copy"></i></button>
@@ -1523,7 +1665,8 @@ function calcular() {
     const ppkg=precioPorKg(mat),subtotal=ppkg*ing.qty;
     totalBatch+=subtotal; desglose.push({nombre:mat.nombre,qty:ing.qty,ppkg,subtotal});
   }
-  const costoPorPlaca=totalBatch/p.batch, costoMatM2=costoPorPlaca*p.placasM2;
+  const costoImportM2=(p.costo_usd||0)*tcUsd;
+  const costoPorPlaca=totalBatch/p.batch, costoMatM2=costoPorPlaca*p.placasM2+costoImportM2;
   const m2dia=p.m2dia||0, costoMOm2=(operarios.length&&m2dia>0)?totalJornales()/m2dia:0;
   const costoTotalM2=costoMatM2+costoMOm2;
   const moSection=operarios.length===0
@@ -1535,6 +1678,7 @@ function calcular() {
     <div class="card">
       <div class="card-title" style="margin-bottom:12px">${p.nombre}</div>
       ${desglose.map(d=>`<div class="desglose-item"><div><div class="list-name">${d.nombre}</div><div class="list-detail">${d.qty} kg × $${d.ppkg.toFixed(2)}/kg</div></div><div class="badge">$${d.subtotal.toLocaleString('es-AR',{maximumFractionDigits:2})}</div></div>`).join('')}
+      ${costoImportM2?`<div class="desglose-item"><div><div class="list-name">Costo importado</div><div class="list-detail">USD ${p.costo_usd.toFixed(2)}/m² × TC ${tcUsd}</div></div><div class="badge">$${costoImportM2.toLocaleString('es-AR',{maximumFractionDigits:2})}</div></div>`:''}
       <div class="metrics-grid">
         <div class="metric"><div class="metric-label">Costo batch</div><div class="metric-value">$${totalBatch.toLocaleString('es-AR',{maximumFractionDigits:0})}</div></div>
         <div class="metric"><div class="metric-label">Por placa</div><div class="metric-value">$${costoPorPlaca.toFixed(2)}</div></div>
@@ -1933,7 +2077,10 @@ function ptoRenderItems() {
         <div><label style="margin-top:0">Precio unitario ($)</label><input type="number" value="${it.precioUnitario||''}" placeholder="0" inputmode="numeric" oninput="ptoItems[${i}].precioUnitario=parseFloat(this.value)||0;ptoRecalcular()" /></div>
       </div>
       <label style="margin-top:0">Modelo / Producto</label>
-      <input type="text" value="${it.modelo||''}" placeholder="ej: Granítico 10x10" list="pto-modelos-list" oninput="ptoItems[${i}].modelo=this.value" />
+      <div style="display:flex;align-items:center;gap:8px">
+        <img id="pto-foto-${i}" src="${it.fotoUrl||''}" style="${it.fotoUrl?'':'display:none;'}width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #eee;flex-shrink:0" />
+        <input type="text" value="${it.modelo||''}" placeholder="ej: Granítico 10x10" list="pto-modelos-list" oninput="ptoItems[${i}].modelo=this.value;ptoVincularProducto(${i})" style="flex:1" />
+      </div>
       <label style="margin-top:6px">Color</label>
       <input type="text" value="${it.color||''}" placeholder="A elección" oninput="ptoItems[${i}].color=this.value" />
       <div style="text-align:right;margin-top:6px;font-size:13px;color:#666">Subtotal: <strong>${fmtMonto((it.cant||0)*(it.precioUnitario||0))}</strong></div>
@@ -1943,6 +2090,16 @@ function ptoRenderItems() {
   if(!dl){ dl = document.createElement('datalist'); dl.id='pto-modelos-list'; document.body.appendChild(dl); }
   dl.innerHTML = [...productos].sort((a,b)=>a.nombre.localeCompare(b.nombre,'es')).map(p=>`<option value="${p.nombre}">`).join('');
   ptoRecalcular();
+}
+
+// Si el modelo coincide con un producto con foto, guarda la foto y el SKU en el item
+function ptoVincularProducto(i) {
+  const it = ptoItems[i];
+  const p = productos.find(x => x.nombre === (it.modelo||'').trim());
+  if(p && p.fotoUrl) { it.fotoUrl = p.fotoUrl; it.sku = p.sku||''; }
+  else { delete it.fotoUrl; delete it.sku; }
+  const img = document.getElementById('pto-foto-'+i);
+  if(img) { img.src = it.fotoUrl||''; img.style.display = it.fotoUrl ? '' : 'none'; }
 }
 
 function ptoRecalcular() {
@@ -2182,7 +2339,7 @@ function ptoGenerarPDF(data) {
     const uLabel = it.unidad==='caja'?'caj.':it.unidad==='unidad'?'u.':'m²';
     return `<tr style="background:${bg}">
       <td style="text-align:center">${it.cant} ${uLabel}</td>
-      <td>${it.modelo||''}</td>
+      <td>${it.fotoUrl?`<div style="display:flex;align-items:center;gap:10px"><img src="${it.fotoUrl}" style="width:54px;height:54px;object-fit:cover;border-radius:3px;flex-shrink:0" /><span>${it.modelo||''}</span></div>`:(it.modelo||'')}</td>
       <td style="text-align:center">${it.color||''}</td>
       <td style="text-align:right">$${(it.precioUnitario||0).toLocaleString('es-AR')}</td>
       <td style="text-align:right">$${sub.toLocaleString('es-AR')}</td>
