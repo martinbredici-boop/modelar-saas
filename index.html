@@ -1475,8 +1475,7 @@ async function guardarProducto() {
   const ings=ingTemp.filter(i=>i.matId&&i.qty>0);
   const data={nombre,batch,placasM2,m2dia,piezas_por_caja,m2_por_caja,costo_manual,tipo_stock,ingredientes:ings};
   if(esB2()) {
-    try { Object.assign(data, await b2DatosProducto()); }
-    catch(e) { return alert('No se pudo subir la foto: '+e.message); }
+    Object.assign(data, b2DatosProducto());
   }
   if(editandoId) {
     await edb().collection('productos').doc(editandoId).update(data);
@@ -1510,17 +1509,17 @@ function b2SiguienteSku() {
   const nums = productos.map(p=>/^B2-(\d+)$/.exec(p.sku||'')).filter(Boolean).map(m=>parseInt(m[1],10));
   return 'B2-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3,'0');
 }
-// Achica la imagen a 600px máx. y la devuelve como data URL JPEG
+// Achica la imagen a 400px máx. y la devuelve como data URL JPEG (se guarda en el producto, sin Storage)
 function b2ReducirImagen(file) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const k = Math.min(1, 600/Math.max(img.width, img.height));
+      const k = Math.min(1, 400/Math.max(img.width, img.height));
       const c = document.createElement('canvas');
       c.width = Math.round(img.width*k); c.height = Math.round(img.height*k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(img.src);
-      resolve(c.toDataURL('image/jpeg', 0.82));
+      resolve(c.toDataURL('image/jpeg', 0.75));
     };
     img.onerror = () => reject(new Error('imagen inválida'));
     img.src = URL.createObjectURL(file);
@@ -1532,16 +1531,10 @@ async function prodFotoElegida(input) {
   const prev = document.getElementById('prod-foto-preview');
   prev.src = prodFotoNueva; prev.style.display = '';
 }
-async function b2SubirFoto(dataUrl, sku) {
-  const ref = storage.ref(`productos/${currentEmpresaId}/${sku}_${Date.now()}.jpg`);
-  await ref.putString(dataUrl, 'data_url');
-  return ref.getDownloadURL();
-}
-async function b2DatosProducto() {
+function b2DatosProducto() {
   const sku = document.getElementById('prod-sku').value.trim() || b2SiguienteSku();
   const datos = { sku, costo_usd: parseFloat(document.getElementById('prod-costo-usd').value)||0 };
-  if(prodFotoNueva) datos.fotoUrl = await b2SubirFoto(prodFotoNueva, sku);
-  else if(prodFotoActual) datos.fotoUrl = prodFotoActual;
+  if(prodFotoNueva || prodFotoActual) datos.fotoUrl = prodFotoNueva || prodFotoActual;
   return datos;
 }
 async function b2GuardarTC() {
@@ -1567,10 +1560,9 @@ async function b2ImportarCatalogo() {
   try {
     for(const [i, c] of nuevos.entries()) {
       document.getElementById('b2-importar-label').textContent = `Importando ${i+1} de ${nuevos.length}…`;
-      const fotoUrl = await b2SubirFoto(c.foto, c.sku);
       await edb().collection('productos').add({
         nombre: c.nombre, sku: c.sku, codigoProveedor: c.codigoProveedor, proveedor: c.proveedor,
-        descripcion: c.descripcion, fob_usd: c.fob_usd, costo_usd: c.costo_usd, fotoUrl,
+        descripcion: c.descripcion, fob_usd: c.fob_usd, costo_usd: c.costo_usd, fotoUrl: c.foto,
         batch: 1, placasM2: 1, m2dia: 0, piezas_por_caja: c.piezas_por_caja, m2_por_caja: c.m2_por_caja,
         costo_manual: 0, tipo_stock: 'cajas_piezas', ingredientes: []
       });
@@ -2078,7 +2070,7 @@ function ptoRenderItems() {
       </div>
       <label style="margin-top:0">Modelo / Producto</label>
       <div style="display:flex;align-items:center;gap:8px">
-        <img id="pto-foto-${i}" src="${it.fotoUrl||''}" style="${it.fotoUrl?'':'display:none;'}width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #eee;flex-shrink:0" />
+        <img id="pto-foto-${i}" src="${ptoFotoItem(it)||''}" style="${ptoFotoItem(it)?'':'display:none;'}width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid #eee;flex-shrink:0" />
         <input type="text" value="${it.modelo||''}" placeholder="ej: Granítico 10x10" list="pto-modelos-list" oninput="ptoItems[${i}].modelo=this.value;ptoVincularProducto(${i})" style="flex:1" />
       </div>
       <label style="margin-top:6px">Color</label>
@@ -2092,14 +2084,18 @@ function ptoRenderItems() {
   ptoRecalcular();
 }
 
-// Si el modelo coincide con un producto con foto, guarda la foto y el SKU en el item
+// Si el modelo coincide con un producto con foto, guarda en el item la referencia al producto
+// (la foto se busca en el producto al mostrarla, para no copiarla dentro del presupuesto)
 function ptoVincularProducto(i) {
   const it = ptoItems[i];
   const p = productos.find(x => x.nombre === (it.modelo||'').trim());
-  if(p && p.fotoUrl) { it.fotoUrl = p.fotoUrl; it.sku = p.sku||''; }
-  else { delete it.fotoUrl; delete it.sku; }
-  const img = document.getElementById('pto-foto-'+i);
-  if(img) { img.src = it.fotoUrl||''; img.style.display = it.fotoUrl ? '' : 'none'; }
+  if(p && p.fotoUrl) { it.productoId = p.id; it.sku = p.sku||''; }
+  else { delete it.productoId; delete it.sku; }
+  const foto = ptoFotoItem(it), img = document.getElementById('pto-foto-'+i);
+  if(img) { img.src = foto||''; img.style.display = foto ? '' : 'none'; }
+}
+function ptoFotoItem(it) {
+  return (it.productoId && productos.find(p => p.id === it.productoId)?.fotoUrl) || null;
 }
 
 function ptoRecalcular() {
@@ -2339,7 +2335,7 @@ function ptoGenerarPDF(data) {
     const uLabel = it.unidad==='caja'?'caj.':it.unidad==='unidad'?'u.':'m²';
     return `<tr style="background:${bg}">
       <td style="text-align:center">${it.cant} ${uLabel}</td>
-      <td>${it.fotoUrl?`<div style="display:flex;align-items:center;gap:10px"><img src="${it.fotoUrl}" style="width:54px;height:54px;object-fit:cover;border-radius:3px;flex-shrink:0" /><span>${it.modelo||''}</span></div>`:(it.modelo||'')}</td>
+      <td>${ptoFotoItem(it)?`<div style="display:flex;align-items:center;gap:10px"><img src="${ptoFotoItem(it)}" style="width:54px;height:54px;object-fit:cover;border-radius:3px;flex-shrink:0" /><span>${it.modelo||''}</span></div>`:(it.modelo||'')}</td>
       <td style="text-align:center">${it.color||''}</td>
       <td style="text-align:right">$${(it.precioUnitario||0).toLocaleString('es-AR')}</td>
       <td style="text-align:right">$${sub.toLocaleString('es-AR')}</td>
