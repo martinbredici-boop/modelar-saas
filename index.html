@@ -1127,7 +1127,7 @@ function setupOwnerListeners() {
   unsubs.push(edb().collection('productos').onSnapshot(snap => {
     productos = snap.docs.map(d => ({id:d.id,...d.data()}));
     renderProductos(); actualizarSelectProducto(); syncProdSelect('p-producto'); syncProdSelect('owner-stock-producto');
-    b2ActualizarBotonImportar();
+    b2ActualizarBotonImportar(); renderOwnerStock();
   }));
   tcUsd = 0;
   document.querySelectorAll('.solo-b2').forEach(el => el.style.display = esB2() ? '' : 'none');
@@ -1190,7 +1190,7 @@ function setupEmployeeListeners() {
     productos = snap.docs.map(d => ({id:d.id,...d.data()}));
     syncProdSelect('ep-producto');
     syncProdSelect('emp-stock-producto');
-    empRenderProductos();
+    empRenderProductos(); empRenderStock();
   }));
   unsubs.push(edb().collection('produccion').onSnapshot(snap => {
     produccion = snap.docs.map(d => ({id:d.id,...d.data()})).sort((a,b)=>b.fecha.localeCompare(a.fecha));
@@ -2840,7 +2840,8 @@ function empRenderStock() {
   el.innerHTML = [...stockData].sort((a,b)=>a.productoNombre.localeCompare(b.productoNombre,'es')).map(s => `
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
+        ${stockFotoHTML(s)}
+        <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:15px">${s.productoNombre}</div>
           <div style="font-size:13px;color:#555;margin-top:3px">${stockResumen(s)}</div>
           <div style="font-size:11px;color:#aaa;margin-top:2px">Actualizado ${fmtFecha(s.ultimaActualizacion?.slice(0,10))} · ${s.actualizadoPor}</div>
@@ -2863,6 +2864,11 @@ function empRenderCola() {
 }
 
 // ── OWNER STOCK ───────────────────────────────────────────────
+// B2: foto del producto en la tarjeta de stock
+function stockFotoHTML(s) {
+  const foto = esB2() && productos.find(p => p.id === s.productoId)?.fotoUrl;
+  return foto ? `<img src="${foto}" loading="lazy" style="width:56px;height:56px;object-fit:cover;border-radius:6px;margin-right:12px;flex-shrink:0" />` : '';
+}
 function stockResumen(s) {
   if (s.tipo_stock === 'unidades') return `<strong>${s.unidades||0}</strong> unidades`;
   return `<strong>${s.cajas}</strong> cajas · <strong>${s.piezasSueltas}</strong> piezas sueltas · <strong>${(s.m2||0).toFixed(2)} m²</strong>`;
@@ -2884,7 +2890,8 @@ function renderOwnerStock() {
   el.innerHTML = [...stockData].sort((a,b)=>a.productoNombre.localeCompare(b.productoNombre,'es')).map(s => `
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        <div>
+        ${stockFotoHTML(s)}
+        <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:15px">${s.productoNombre}</div>
           <div style="font-size:13px;color:#555;margin-top:3px">${stockResumen(s)}</div>
           <div style="font-size:11px;color:#aaa;margin-top:2px">Actualizado ${fmtFecha(s.ultimaActualizacion?.slice(0,10))} · ${s.actualizadoPor}</div>
