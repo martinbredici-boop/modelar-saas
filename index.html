@@ -591,6 +591,7 @@
             <div><label>SKU</label><input type="text" id="prod-sku" placeholder="Automático (B2-0xx)" /></div>
             <div><label>Costo USD/m²</label><input type="number" id="prod-costo-usd" placeholder="ej: 29.43" step="0.01" inputmode="decimal" /></div>
           </div>
+          <label>Peso por caja (kg)</label><input type="number" id="prod-peso-caja" placeholder="ej: 23" step="0.1" inputmode="decimal" />
           <label>Foto</label>
           <div style="display:flex;align-items:center;gap:10px">
             <img id="prod-foto-preview" style="display:none;width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #eee" />
@@ -1494,6 +1495,7 @@ function b2CargarCampos(p, duplicado) {
   if(!esB2()) return;
   document.getElementById('prod-sku').value = duplicado ? '' : (p.sku||'');
   document.getElementById('prod-costo-usd').value = p.costo_usd||'';
+  document.getElementById('prod-peso-caja').value = p.peso_kg_caja||'';
   document.getElementById('prod-foto').value = '';
   prodFotoNueva = null; prodFotoActual = p.fotoUrl||null;
   const prev = document.getElementById('prod-foto-preview');
@@ -1501,7 +1503,7 @@ function b2CargarCampos(p, duplicado) {
 }
 function b2LimpiarCampos() {
   if(!esB2()) return;
-  ['prod-sku','prod-costo-usd','prod-foto'].forEach(id=>document.getElementById(id).value='');
+  ['prod-sku','prod-costo-usd','prod-peso-caja','prod-foto'].forEach(id=>document.getElementById(id).value='');
   prodFotoNueva = null; prodFotoActual = null;
   document.getElementById('prod-foto-preview').style.display = 'none';
 }
@@ -1533,7 +1535,8 @@ async function prodFotoElegida(input) {
 }
 function b2DatosProducto() {
   const sku = document.getElementById('prod-sku').value.trim() || b2SiguienteSku();
-  const datos = { sku, costo_usd: parseFloat(document.getElementById('prod-costo-usd').value)||0 };
+  const datos = { sku, costo_usd: parseFloat(document.getElementById('prod-costo-usd').value)||0,
+    peso_kg_caja: parseFloat(document.getElementById('prod-peso-caja').value)||0 };
   if(prodFotoNueva || prodFotoActual) datos.fotoUrl = prodFotoNueva || prodFotoActual;
   return datos;
 }
@@ -1545,29 +1548,41 @@ async function b2GuardarTC() {
 function b2ActualizarBotonImportar() {
   const wrap = document.getElementById('b2-importar-wrap'); if(!wrap || !esB2()) return;
   fetch(B2_CATALOGO_URL).then(r=>r.json()).then(cat => {
-    const faltan = cat.filter(c => !productos.some(p => p.sku === c.sku)).length;
-    wrap.style.display = faltan ? '' : 'none';
-    document.getElementById('b2-importar-label').textContent = `Importar catálogo Yingfei (${faltan} producto${faltan>1?'s':''})`;
+    const {nuevos, sinPeso} = b2PendientesCatalogo(cat);
+    wrap.style.display = (nuevos.length || sinPeso.length) ? '' : 'none';
+    document.getElementById('b2-importar-label').textContent = nuevos.length
+      ? `Importar catálogo Yingfei (${nuevos.length} producto${nuevos.length>1?'s':''})`
+      : `Completar peso por caja (${sinPeso.length} producto${sinPeso.length>1?'s':''})`;
   }).catch(() => { wrap.style.display = 'none'; });
+}
+// Productos del catálogo que faltan crear, y productos ya importados sin peso por caja
+function b2PendientesCatalogo(cat) {
+  const nuevos = cat.filter(c => !productos.some(p => p.sku === c.sku));
+  const sinPeso = cat.map(c => ({c, p: productos.find(p => p.sku === c.sku && !p.peso_kg_caja)})).filter(x => x.p);
+  return {nuevos, sinPeso};
 }
 async function b2ImportarCatalogo() {
   const btn = document.getElementById('b2-btn-importar');
   const cat = await (await fetch(B2_CATALOGO_URL)).json();
-  const nuevos = cat.filter(c => !productos.some(p => p.sku === c.sku));
-  if(!nuevos.length) return alert('El catálogo ya está importado.');
-  if(!confirm(`Se van a crear ${nuevos.length} productos con foto y costo USD (FOB ×3). ¿Continuar?`)) return;
+  const {nuevos, sinPeso} = b2PendientesCatalogo(cat);
+  if(!nuevos.length && !sinPeso.length) return alert('El catálogo ya está importado.');
+  const partes = [];
+  if(nuevos.length) partes.push(`crear ${nuevos.length} productos con foto y costo USD (FOB ×3)`);
+  if(sinPeso.length) partes.push(`completar el peso por caja de ${sinPeso.length} productos`);
+  if(!confirm(`Esto va a ${partes.join(' y ')}. ¿Continuar?`)) return;
   btn.disabled = true;
   try {
+    for(const {c, p} of sinPeso) await edb().collection('productos').doc(p.id).update({peso_kg_caja: c.peso_kg_caja});
     for(const [i, c] of nuevos.entries()) {
       document.getElementById('b2-importar-label').textContent = `Importando ${i+1} de ${nuevos.length}…`;
       await edb().collection('productos').add({
         nombre: c.nombre, sku: c.sku, codigoProveedor: c.codigoProveedor, proveedor: c.proveedor,
         descripcion: c.descripcion, fob_usd: c.fob_usd, costo_usd: c.costo_usd, fotoUrl: c.foto,
-        batch: 1, placasM2: 1, m2dia: 0, piezas_por_caja: c.piezas_por_caja, m2_por_caja: c.m2_por_caja,
+        batch: 1, placasM2: 1, m2dia: 0, piezas_por_caja: c.piezas_por_caja, m2_por_caja: c.m2_por_caja, peso_kg_caja: c.peso_kg_caja,
         costo_manual: 0, tipo_stock: 'cajas_piezas', ingredientes: []
       });
     }
-    alert(`Listo: se importaron ${nuevos.length} productos.`);
+    alert(`Listo: ${partes.join(' y ').replace('crear','se crearon').replace('completar','se completó')}.`);
   } catch(e) {
     alert('Error al importar: '+e.message+'\nPodés volver a tocar el botón para continuar con los que faltan.');
   }
@@ -1596,7 +1611,7 @@ function renderProductos() {
         <div style="flex:1;min-width:0;">
           <div class="list-name">${p.nombre}</div>
           ${importado
-            ?`<div class="list-detail">${p.sku?'SKU '+p.sku:''}${p.codigoProveedor?' · Prov. '+p.codigoProveedor:''}${p.m2_por_caja?' · '+p.m2_por_caja+' m²/caja':''}</div>
+            ?`<div class="list-detail">${p.sku?'SKU '+p.sku:''}${p.codigoProveedor?' · Prov. '+p.codigoProveedor:''}${p.m2_por_caja?' · '+p.m2_por_caja+' m²/caja':''}${p.peso_kg_caja?' · '+p.peso_kg_caja+' kg/caja':''}</div>
               ${p.costo_usd?`<div class="list-detail">Costo/m²: <strong>USD ${p.costo_usd.toFixed(2)}</strong>${tcUsd?` · <strong>$${costo.toLocaleString('es-AR',{maximumFractionDigits:0})}</strong>`:' · cargá el tipo de cambio'}</div>`:''}`
             :`<div class="list-detail">${p.ingredientes.length} ingr. · batch ${p.batch} · ${p.placasM2} pl/m²${p.m2dia?' · '+p.m2dia+' m²/día':''}</div>
               ${costo!==null?`<div class="list-detail">Costo mat/m²: <strong>$${costo.toFixed(2)}</strong></div>`:''}`}
