@@ -605,11 +605,9 @@
             <div><label>Medida pieza</label><input type="text" id="prod-medida-pieza" placeholder="ej: 22x145 mm" /></div>
             <div><label>Medida malla</label><input type="text" id="prod-medida-malla" placeholder="ej: 296x300 mm" /></div>
           </div>
-          <label>Foto</label>
-          <div style="display:flex;align-items:center;gap:10px">
-            <img id="prod-foto-preview" style="display:none;width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #eee" />
-            <input type="file" id="prod-foto" accept="image/*" onchange="prodFotoElegida(this)" style="flex:1" />
-          </div>
+          <label>Fotos <span style="font-weight:400;color:#888">(la primera es la principal · hasta 6)</span></label>
+          <div id="prod-fotos" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
+          <input type="file" id="prod-foto" accept="image/*" multiple onchange="prodFotosElegidas(this)" />
         </div>
         <div class="row">
           <div><label>Piezas por maquinada</label><input type="number" id="prod-batch" placeholder="800" inputmode="numeric" /></div>
@@ -1012,7 +1010,7 @@ let currentEmpresaId = null, currentUserRol = null;
 const B2_EMPRESA_ID = 'YfNYSFmj9Ix8iL4vCN31';
 const B2_CATALOGO_URL = 'catalogos/b2-yingfei-2026-10.json';
 function esB2() { return currentEmpresaId === B2_EMPRESA_ID; }
-let tcUsd = 0, prodFotoNueva = null, prodFotoActual = null;
+let tcUsd = 0, prodFotos = [], prodFotosCambiadas = false, prodFotosCarga = 0;
 
 // ── ESTADO ────────────────────────────────────────────────────
 let materiales = [], productos = [], margenes = [], operarios = [], gastos = [], produccion = [], stockData = [], pedidos = [], stockMateriales = [], presupuestosCache = [];
@@ -1493,9 +1491,11 @@ async function guardarProducto() {
   }
   if(editandoId) {
     await edb().collection('productos').doc(editandoId).update(data);
+    await b2GuardarFotos(editandoId);
     cancelarEdicion();
   } else {
-    await edb().collection('productos').add(data);
+    const ref = await edb().collection('productos').add(data);
+    await b2GuardarFotos(ref.id);
     ingTemp=[];
     ['prod-nombre','prod-batch','prod-placas-m2','prod-m2dia','prod-piezas-caja','prod-m2-caja'].forEach(id=>document.getElementById(id).value='');
     b2LimpiarCampos();
@@ -1513,41 +1513,79 @@ function b2CargarCampos(p, duplicado) {
   document.getElementById('prod-medida-pieza').value = p.medida_pieza||'';
   document.getElementById('prod-medida-malla').value = p.medida_malla||'';
   document.getElementById('prod-foto').value = '';
-  prodFotoNueva = null; prodFotoActual = p.fotoUrl||null;
-  const prev = document.getElementById('prod-foto-preview');
-  prev.src = prodFotoActual||''; prev.style.display = prodFotoActual ? '' : 'none';
+  // Las fotos en alta van aparte (productos_fotos/{id}) para no cargarlas en cada lista;
+  // los productos viejos sin galería arrancan con su foto principal
+  prodFotos = p.fotoUrl ? [p.fotoUrl] : []; prodFotosCambiadas = duplicado;
+  const carga = ++prodFotosCarga;
+  renderProdFotos();
+  edb().collection('productos_fotos').doc(p.id).get().then(d => {
+    if(carga !== prodFotosCarga || !d.exists || !(d.data().fotos||[]).length) return;
+    prodFotos = d.data().fotos; renderProdFotos();
+  }).catch(e => console.warn('No se pudieron cargar las fotos', e));
 }
 function b2LimpiarCampos() {
   if(!esB2()) return;
   ['prod-sku','prod-linea','prod-costo-usd','prod-peso-caja','prod-medida-pieza','prod-medida-malla','prod-foto'].forEach(id=>document.getElementById(id).value='');
-  prodFotoNueva = null; prodFotoActual = null;
-  document.getElementById('prod-foto-preview').style.display = 'none';
+  prodFotos = []; prodFotosCambiadas = false; prodFotosCarga++;
+  renderProdFotos();
 }
 function b2SiguienteSku() {
   const nums = productos.map(p=>/^B2-(\d+)$/.exec(p.sku||'')).filter(Boolean).map(m=>parseInt(m[1],10));
   return 'B2-' + String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3,'0');
 }
-// Achica la imagen a 400px máx. y la devuelve como data URL JPEG (se guarda en el producto, sin Storage)
-function b2ReducirImagen(file) {
+// Achica la imagen (archivo o data URL) a `max` px y la devuelve como data URL JPEG (se guarda en Firestore, sin Storage)
+function b2ReducirImagen(fuente, max = 400, calidad = 0.75) {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    const url = typeof fuente === 'string' ? fuente : URL.createObjectURL(fuente);
     img.onload = () => {
-      const k = Math.min(1, 400/Math.max(img.width, img.height));
+      const k = Math.min(1, max/Math.max(img.width, img.height));
       const c = document.createElement('canvas');
       c.width = Math.round(img.width*k); c.height = Math.round(img.height*k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      URL.revokeObjectURL(img.src);
-      resolve(c.toDataURL('image/jpeg', 0.75));
+      if(url !== fuente) URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/jpeg', calidad));
     };
     img.onerror = () => reject(new Error('imagen inválida'));
-    img.src = URL.createObjectURL(file);
+    img.src = url;
   });
 }
-async function prodFotoElegida(input) {
-  const file = input.files[0]; if(!file) return;
-  prodFotoNueva = await b2ReducirImagen(file);
-  const prev = document.getElementById('prod-foto-preview');
-  prev.src = prodFotoNueva; prev.style.display = '';
+// Galería del producto: hasta 6 fotos de 800px (~100 KB c/u, entran en un documento de Firestore)
+const B2_MAX_FOTOS = 6;
+function renderProdFotos() {
+  const el = document.getElementById('prod-fotos'); if(!el) return;
+  const btn = 'border:0;background:rgba(0,0,0,.6);color:#fff;border-radius:4px;font-size:11px;padding:1px 5px;cursor:pointer';
+  el.innerHTML = prodFotos.map((f, i) => `<div style="position:relative;width:72px;height:72px">
+      <img src="${f}" style="width:72px;height:72px;object-fit:cover;border-radius:6px;border:${i?'1px solid #eee':'2px solid #333'}" />
+      <button type="button" onclick="prodQuitarFoto(${i})" title="Quitar" style="position:absolute;top:3px;right:3px;${btn}">✕</button>
+      ${i ? `<button type="button" onclick="prodFotoPrincipal(${i})" title="Usar como principal" style="position:absolute;bottom:3px;left:3px;${btn}">★</button>`
+          : '<span style="position:absolute;bottom:3px;left:3px;background:#333;color:#fff;border-radius:4px;font-size:10px;padding:1px 5px">Principal</span>'}
+    </div>`).join('');
+  document.getElementById('prod-foto').style.display = prodFotos.length >= B2_MAX_FOTOS ? 'none' : '';
+}
+async function prodFotosElegidas(input) {
+  const archivos = [...input.files].slice(0, B2_MAX_FOTOS - prodFotos.length);
+  if(input.files.length > archivos.length) alert(`Se pueden cargar hasta ${B2_MAX_FOTOS} fotos por producto.`);
+  input.value = '';
+  for(const file of archivos) {
+    try { prodFotos.push(await b2ReducirImagen(file, 800, 0.8)); } catch(e) { alert('No se pudo leer ' + file.name); }
+  }
+  prodFotosCambiadas = true; renderProdFotos();
+}
+function prodQuitarFoto(i) { prodFotos.splice(i, 1); prodFotosCambiadas = true; renderProdFotos(); }
+function prodFotoPrincipal(i) { prodFotos.unshift(...prodFotos.splice(i, 1)); prodFotosCambiadas = true; renderProdFotos(); }
+// Guarda la galería en alta y deja en el producto una copia chica de la principal para las listas
+async function b2GuardarFotos(id) {
+  if(!esB2() || !prodFotosCambiadas) return;
+  const fotos = prodFotos.slice();
+  const principal = !fotos[0] ? '' : fotos[0].startsWith('data:') ? await b2ReducirImagen(fotos[0]) : fotos[0];
+  await edb().collection('productos').doc(id).update({ fotoUrl: principal });
+  try {
+    await edb().collection('productos_fotos').doc(id).set({ fotos });
+  } catch(e) {
+    console.error(e);
+    alert('Se guardó el producto, pero no las fotos adicionales: falta permitir la colección "productos_fotos" en las reglas de Firestore.');
+  }
 }
 function b2DatosProducto() {
   const sku = document.getElementById('prod-sku').value.trim() || b2SiguienteSku();
@@ -1555,7 +1593,6 @@ function b2DatosProducto() {
     peso_kg_caja: parseFloat(document.getElementById('prod-peso-caja').value)||0,
     medida_pieza: document.getElementById('prod-medida-pieza').value.trim(),
     medida_malla: document.getElementById('prod-medida-malla').value.trim() };
-  if(prodFotoNueva || prodFotoActual) datos.fotoUrl = prodFotoNueva || prodFotoActual;
   return datos;
 }
 async function b2GuardarTC() {
@@ -1611,12 +1648,14 @@ async function b2GuardarPrecioTienda(id, valor) {
 async function b2GuardarLineaTienda(id, valor) {
   await edb().collection('productos').doc(id).update({ linea: valor.trim().replace(/\s+/g,' ') });
 }
-// Las fotos del proveedor traen su código impreso arriba (ej. "Y22F801", ~14% del alto): se recorta
-// antes de publicar para que no llegue a la tienda. La foto guardada en el producto no se toca.
-const B2_FOTO_RECORTE_SUP = 0.15;
-// Si una foto no se puede recortar (enlace externo sin CORS, imagen rota o demora), el producto
-// se publica sin foto: nunca se publica la original, que mostraría el código del proveedor.
-function b2RecortarFotoTienda(src) {
+// Todas las fotos se publican cuadradas (800px máx.) para que se vean del mismo tamaño: la foto entera
+// se achica hasta entrar en el cuadrado y el espacio que sobra se rellena con el fondo de la tienda.
+// Las fotos del catálogo del proveedor traen además su código impreso arriba (ej. "Y22F801", ~14% del
+// alto): a esas se les corta antes esa franja. Las fotos guardadas en el producto no se tocan.
+const B2_FOTO_RECORTE_SUP = 0.15, B2_FOTO_TIENDA_PX = 800, B2_FOTO_FONDO = '#f4efe5';
+// Si una foto no se puede preparar (enlace externo sin CORS, imagen rota o demora) no se publica:
+// nunca se publica la original sin pasar por el recorte.
+function b2RecortarFotoTienda(src, delProveedor) {
   return new Promise(resolve => {
     if(!src) return resolve('');
     const limite = setTimeout(() => resolve(''), 15000);
@@ -1625,11 +1664,15 @@ function b2RecortarFotoTienda(src) {
     if(!src.startsWith('data:')) img.crossOrigin = 'anonymous';
     img.onload = () => {
       try {
-        const corte = Math.round(img.height * B2_FOTO_RECORTE_SUP);
+        const arriba = delProveedor ? Math.round(img.height * B2_FOTO_RECORTE_SUP) : 0;
+        const w = img.width, h = img.height - arriba;
         const c = document.createElement('canvas');
-        c.width = img.width; c.height = img.height - corte;
-        c.getContext('2d').drawImage(img, 0, corte, img.width, c.height, 0, 0, c.width, c.height);
-        fin(c.toDataURL('image/jpeg', 0.85));
+        c.width = c.height = Math.min(Math.max(w, h), B2_FOTO_TIENDA_PX);
+        const k = c.width / Math.max(w, h), dw = w * k, dh = h * k;
+        const g = c.getContext('2d');
+        g.fillStyle = B2_FOTO_FONDO; g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(img, 0, arriba, w, h, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+        fin(c.toDataURL('image/jpeg', 0.82));
       } catch(e) { console.warn('No se pudo recortar la foto', e); fin(''); }
     };
     img.onerror = () => fin('');
@@ -1652,25 +1695,42 @@ async function b2PublicarTienda() {
     // permite recortar (sin CORS): para esos se usa la misma foto del catálogo Yingfei, buscada por SKU.
     const catalogo = await fetch(B2_CATALOGO_URL).then(r=>r.json()).catch(()=>[]);
     const fotoCatalogo = Object.fromEntries(catalogo.filter(c=>c.sku&&c.foto).map(c=>[c.sku, c.foto]));
+    // Galerías en alta; un producto sin galería usa su foto principal
+    const galerias = Object.fromEntries((await edb().collection('productos_fotos').get().catch(()=>({docs:[]})))
+      .docs.map(d=>[d.id, d.data().fotos||[]]));
     let listas = 0;
     estado.textContent = `Preparando fotos… 0/${aPublicar.length}`;
     const fotos = await Promise.all(aPublicar.map(async p => {
-      let f = await b2RecortarFotoTienda(p.fotoUrl);
-      if(!f && fotoCatalogo[p.sku]) f = await b2RecortarFotoTienda(fotoCatalogo[p.sku]);
+      const fuentes = galerias[p.id]?.length ? galerias[p.id] : [p.fotoUrl].filter(Boolean);
+      const lista = [];
+      for(const [i, src] of fuentes.entries()) {
+        let f = await b2RecortarFotoTienda(src, src === fotoCatalogo[p.sku]);
+        if(!f && i === 0 && fotoCatalogo[p.sku]) f = await b2RecortarFotoTienda(fotoCatalogo[p.sku], true);
+        if(f) lista.push(f);
+      }
       estado.textContent = `Preparando fotos… ${++listas}/${aPublicar.length}`;
-      return f;
+      return lista;
     }));
-    const sinFoto = aPublicar.filter((p,i)=>p.fotoUrl && !fotos[i]).length;
+    const sinFoto = aPublicar.filter((p,i)=>p.fotoUrl && !fotos[i].length).length;
+    // Las fotos adicionales van en tiendas/{id}/fotos/{productoId}: la tienda las lee solo en la página del producto
+    const fotosPublicadas = await tienda.collection('fotos').get();
+    fotosPublicadas.docs.forEach(d => { if(!vigentes.has(d.id) || fotos[aPublicar.findIndex(p=>p.id===d.id)].length < 2) ops.push(b => b.delete(d.ref)); });
     aPublicar.forEach((p, i) => ops.push(b => b.set(tienda.collection('productos').doc(p.id), {
       nombre: p.nombre, sku: p.sku||'', linea: p.linea||'', descripcion: p.descripcion||'',
       medida_pieza: p.medida_pieza||'', medida_malla: p.medida_malla||'',
       m2_por_caja: p.m2_por_caja||0, piezas_por_caja: p.piezas_por_caja||0, peso_kg_caja: p.peso_kg_caja||0,
-      foto: fotos[i], precio_m2: p.precio_tienda_m2, web: p.web!==false
+      foto: fotos[i][0]||'', cant_fotos: fotos[i].length, precio_m2: p.precio_tienda_m2, web: p.web!==false
     })));
     // Lotes chicos: las fotos van dentro de cada documento
     for(let i=0; i<ops.length; i+=10) {
       estado.textContent = `Guardando en la tienda… ${i}/${ops.length}`;
       const batch = db.batch(); ops.slice(i, i+10).forEach(op => op(batch)); await batch.commit();
+    }
+    // Cada galería puede pesar ~500 KB: se guardan de a una
+    const conGaleria = aPublicar.filter((p,i)=>fotos[i].length > 1);
+    for(const [n, p] of conGaleria.entries()) {
+      estado.textContent = `Guardando fotos… ${n}/${conGaleria.length}`;
+      await tienda.collection('fotos').doc(p.id).set({ fotos: fotos[aPublicar.indexOf(p)].slice(1) });
     }
     await tienda.set({ actualizado: new Date().toISOString() }, {merge: true});
     const ocultos = productos.length - aPublicar.length;
@@ -1732,6 +1792,7 @@ async function b2ImportarCatalogo() {
 async function eliminarProducto(id) {
   if(!confirm('¿Eliminar este producto?')) return;
   await edb().collection('productos').doc(id).delete();
+  if(esB2()) edb().collection('productos_fotos').doc(id).delete().catch(()=>{});
 }
 function calcularCostoProducto(p) {
   const extra = (p.costo_manual||0) + (p.costo_usd||0)*tcUsd;
