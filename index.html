@@ -579,7 +579,7 @@
           <button class="btn" id="b2-btn-importar" onclick="b2ImportarCatalogo()" style="width:100%"><i class="ti ti-download"></i> <span id="b2-importar-label">Importar catálogo Yingfei</span></button>
         </div>
         <label style="margin-top:16px">Tienda web — precios de venta ($/m²)</label>
-        <p class="list-detail" style="margin-bottom:6px">Se guardan al salir de cada campo. Los productos sin precio se muestran como "Consultar".</p>
+        <p class="list-detail" style="margin-bottom:6px">Se guardan al salir de cada campo. Los productos sin precio no se publican en la tienda.</p>
         <div id="b2-tienda-precios" style="max-height:420px;overflow-y:auto;border:1px solid #eee;border-radius:8px"></div>
         <button class="btn btn-primary" id="b2-btn-tienda" onclick="b2PublicarTienda()" style="width:100%;margin-top:10px"><i class="ti ti-world-upload"></i> Publicar en la tienda</button>
         <p class="list-detail" id="b2-tienda-estado" style="margin-top:6px">Copia nombre, medidas, foto y precio a la tienda online. No publica costos ni proveedor.</p>
@@ -1578,7 +1578,7 @@ function b2RenderPreciosTienda() {
     <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #f2f2f2">
       ${p.fotoUrl?`<img src="${p.fotoUrl}" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0" />`:''}
       <div style="flex:1;min-width:0"><div class="list-name" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.nombre}</div></div>
-      <input type="number" data-id="${p.id}" value="${p.precio_tienda_m2||''}" placeholder="Consultar" min="0" step="1" inputmode="numeric"
+      <input type="number" data-id="${p.id}" value="${p.precio_tienda_m2||''}" placeholder="Sin precio" min="0" step="1" inputmode="numeric"
         onchange="b2GuardarPrecioTienda('${p.id}', this.value)" style="width:120px;margin:0;text-align:right" />
     </div>`).join('') : '<div class="empty">Aún no hay productos.</div>';
 }
@@ -1605,29 +1605,31 @@ function b2RecortarFotoTienda(src) {
   });
 }
 async function b2PublicarTienda() {
-  const sinPrecio = productos.filter(p=>!p.precio_tienda_m2).length;
-  if(sinPrecio && !confirm(`${sinPrecio} producto${sinPrecio>1?'s':''} sin precio se publicará${sinPrecio>1?'n':''} como "Consultar". ¿Publicar igual?`)) return;
+  // Solo se publican los productos con precio; los demás no aparecen en la tienda
+  const aPublicar = productos.filter(p=>p.precio_tienda_m2>0);
+  if(!aPublicar.length) return alert('Cargá el precio de al menos un producto para publicar.');
   const btn = document.getElementById('b2-btn-tienda'), estado = document.getElementById('b2-tienda-estado');
   btn.disabled = true; estado.textContent = 'Publicando…';
   try {
     const tienda = db.collection('tiendas').doc(currentEmpresaId);
     const publicados = await tienda.collection('productos').get();
-    const vigentes = new Set(productos.map(p=>p.id));
+    const vigentes = new Set(aPublicar.map(p=>p.id));
     const ops = [];
     publicados.docs.forEach(d => { if(!vigentes.has(d.id)) ops.push(b => b.delete(d.ref)); });
-    const fotos = await Promise.all(productos.map(p => b2RecortarFotoTienda(p.fotoUrl)));
-    productos.forEach((p, i) => ops.push(b => b.set(tienda.collection('productos').doc(p.id), {
+    const fotos = await Promise.all(aPublicar.map(p => b2RecortarFotoTienda(p.fotoUrl)));
+    aPublicar.forEach((p, i) => ops.push(b => b.set(tienda.collection('productos').doc(p.id), {
       nombre: p.nombre, sku: p.sku||'', descripcion: p.descripcion||'',
       medida_pieza: p.medida_pieza||'', medida_malla: p.medida_malla||'',
       m2_por_caja: p.m2_por_caja||0, piezas_por_caja: p.piezas_por_caja||0, peso_kg_caja: p.peso_kg_caja||0,
-      foto: fotos[i], precio_m2: p.precio_tienda_m2||0, web: p.web!==false
+      foto: fotos[i], precio_m2: p.precio_tienda_m2, web: p.web!==false
     })));
     // Lotes chicos: las fotos van dentro de cada documento
     for(let i=0; i<ops.length; i+=20) {
       const batch = db.batch(); ops.slice(i, i+20).forEach(op => op(batch)); await batch.commit();
     }
     await tienda.set({ actualizado: new Date().toISOString() }, {merge: true});
-    estado.textContent = `Publicados ${productos.length} productos — ${new Date().toLocaleString('es-AR')}`;
+    const ocultos = productos.length - aPublicar.length;
+    estado.textContent = `Publicados ${aPublicar.length} productos${ocultos?` (${ocultos} sin precio no se muestran)`:''} — ${new Date().toLocaleString('es-AR')}`;
   } catch(e) {
     console.error(e); estado.textContent = 'No se pudo publicar: ' + e.message;
   } finally { btn.disabled = false; }
