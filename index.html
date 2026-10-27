@@ -607,7 +607,13 @@
           </div>
           <label>Fotos <span style="font-weight:400;color:#888">(la primera es la principal · hasta 6)</span></label>
           <div id="prod-fotos" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px"></div>
-          <input type="file" id="prod-foto" accept="image/*" multiple onchange="prodFotosElegidas(this)" />
+          <label id="prod-fotos-zona" ondragover="event.preventDefault(); this.style.borderColor='#333'; this.style.background='#f5f5f5'"
+            ondragleave="this.style.borderColor='#ccc'; this.style.background=''" ondrop="prodFotosSoltadas(event)"
+            style="display:block;border:2px dashed #ccc;border-radius:8px;padding:18px 12px;text-align:center;color:#666;font-size:13px;font-weight:400;cursor:pointer;margin:0 0 8px">
+            <i class="ti ti-photo-up" style="font-size:22px;display:block;margin-bottom:4px"></i>
+            Arrastrá las fotos acá o tocá para elegirlas
+            <input type="file" id="prod-foto" accept="image/*" multiple onchange="prodFotosElegidas(this)" style="display:none" />
+          </label>
         </div>
         <div class="row">
           <div><label>Piezas por maquinada</label><input type="number" id="prod-batch" placeholder="800" inputmode="numeric" /></div>
@@ -1561,12 +1567,20 @@ function renderProdFotos() {
       ${i ? `<button type="button" onclick="prodFotoPrincipal(${i})" title="Usar como principal" style="position:absolute;bottom:3px;left:3px;${btn}">★</button>`
           : '<span style="position:absolute;bottom:3px;left:3px;background:#333;color:#fff;border-radius:4px;font-size:10px;padding:1px 5px">Principal</span>'}
     </div>`).join('');
-  document.getElementById('prod-foto').style.display = prodFotos.length >= B2_MAX_FOTOS ? 'none' : '';
+  document.getElementById('prod-fotos-zona').style.display = prodFotos.length >= B2_MAX_FOTOS ? 'none' : '';
 }
-async function prodFotosElegidas(input) {
-  const archivos = [...input.files].slice(0, B2_MAX_FOTOS - prodFotos.length);
-  if(input.files.length > archivos.length) alert(`Se pueden cargar hasta ${B2_MAX_FOTOS} fotos por producto.`);
-  input.value = '';
+function prodFotosElegidas(input) { const files = [...input.files]; input.value = ''; prodAgregarFotos(files); }
+function prodFotosSoltadas(e) {
+  e.preventDefault();
+  const zona = document.getElementById('prod-fotos-zona');
+  zona.style.borderColor = '#ccc'; zona.style.background = '';
+  prodAgregarFotos([...e.dataTransfer.files].filter(f => f.type.startsWith('image/')));
+}
+// Si una foto se suelta fuera del recuadro, el navegador la abriría y se perdería lo cargado en el formulario
+['dragover', 'drop'].forEach(t => window.addEventListener(t, e => { if(e.dataTransfer?.types.includes('Files')) e.preventDefault(); }));
+async function prodAgregarFotos(files) {
+  const archivos = files.slice(0, B2_MAX_FOTOS - prodFotos.length);
+  if(files.length > archivos.length) alert(`Se pueden cargar hasta ${B2_MAX_FOTOS} fotos por producto.`);
   for(const file of archivos) {
     try { prodFotos.push(await b2ReducirImagen(file, 800, 0.8)); } catch(e) { alert('No se pudo leer ' + file.name); }
   }
