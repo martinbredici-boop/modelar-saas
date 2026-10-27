@@ -1589,18 +1589,25 @@ async function b2GuardarPrecioTienda(id, valor) {
 // Las fotos del proveedor traen su código impreso arriba (ej. "Y22F801", ~14% del alto): se recorta
 // antes de publicar para que no llegue a la tienda. La foto guardada en el producto no se toca.
 const B2_FOTO_RECORTE_SUP = 0.15;
+// Si una foto no se puede recortar (enlace externo sin CORS, imagen rota o demora), el producto
+// se publica sin foto: nunca se publica la original, que mostraría el código del proveedor.
 function b2RecortarFotoTienda(src) {
   return new Promise(resolve => {
     if(!src) return resolve('');
+    const limite = setTimeout(() => resolve(''), 15000);
+    const fin = v => { clearTimeout(limite); resolve(v); };
     const img = new Image();
+    if(!src.startsWith('data:')) img.crossOrigin = 'anonymous';
     img.onload = () => {
-      const corte = Math.round(img.height * B2_FOTO_RECORTE_SUP);
-      const c = document.createElement('canvas');
-      c.width = img.width; c.height = img.height - corte;
-      c.getContext('2d').drawImage(img, 0, corte, img.width, c.height, 0, 0, c.width, c.height);
-      resolve(c.toDataURL('image/jpeg', 0.85));
+      try {
+        const corte = Math.round(img.height * B2_FOTO_RECORTE_SUP);
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height - corte;
+        c.getContext('2d').drawImage(img, 0, corte, img.width, c.height, 0, 0, c.width, c.height);
+        fin(c.toDataURL('image/jpeg', 0.85));
+      } catch(e) { console.warn('No se pudo recortar la foto', e); fin(''); }
     };
-    img.onerror = () => resolve('');
+    img.onerror = () => fin('');
     img.src = src;
   });
 }
@@ -1609,14 +1616,19 @@ async function b2PublicarTienda() {
   const aPublicar = productos.filter(p=>p.precio_tienda_m2>0);
   if(!aPublicar.length) return alert('Cargá el precio de al menos un producto para publicar.');
   const btn = document.getElementById('b2-btn-tienda'), estado = document.getElementById('b2-tienda-estado');
-  btn.disabled = true; estado.textContent = 'Publicando…';
+  btn.disabled = true; estado.textContent = 'Revisando la tienda…';
   try {
     const tienda = db.collection('tiendas').doc(currentEmpresaId);
     const publicados = await tienda.collection('productos').get();
     const vigentes = new Set(aPublicar.map(p=>p.id));
     const ops = [];
     publicados.docs.forEach(d => { if(!vigentes.has(d.id)) ops.push(b => b.delete(d.ref)); });
-    const fotos = await Promise.all(aPublicar.map(p => b2RecortarFotoTienda(p.fotoUrl)));
+    let listas = 0;
+    estado.textContent = `Preparando fotos… 0/${aPublicar.length}`;
+    const fotos = await Promise.all(aPublicar.map(p => b2RecortarFotoTienda(p.fotoUrl).then(f => {
+      estado.textContent = `Preparando fotos… ${++listas}/${aPublicar.length}`; return f;
+    })));
+    const sinFoto = aPublicar.filter((p,i)=>p.fotoUrl && !fotos[i]).length;
     aPublicar.forEach((p, i) => ops.push(b => b.set(tienda.collection('productos').doc(p.id), {
       nombre: p.nombre, sku: p.sku||'', descripcion: p.descripcion||'',
       medida_pieza: p.medida_pieza||'', medida_malla: p.medida_malla||'',
@@ -1624,12 +1636,13 @@ async function b2PublicarTienda() {
       foto: fotos[i], precio_m2: p.precio_tienda_m2, web: p.web!==false
     })));
     // Lotes chicos: las fotos van dentro de cada documento
-    for(let i=0; i<ops.length; i+=20) {
-      const batch = db.batch(); ops.slice(i, i+20).forEach(op => op(batch)); await batch.commit();
+    for(let i=0; i<ops.length; i+=10) {
+      estado.textContent = `Guardando en la tienda… ${i}/${ops.length}`;
+      const batch = db.batch(); ops.slice(i, i+10).forEach(op => op(batch)); await batch.commit();
     }
     await tienda.set({ actualizado: new Date().toISOString() }, {merge: true});
     const ocultos = productos.length - aPublicar.length;
-    estado.textContent = `Publicados ${aPublicar.length} productos${ocultos?` (${ocultos} sin precio no se muestran)`:''} — ${new Date().toLocaleString('es-AR')}`;
+    estado.textContent = `Publicados ${aPublicar.length} productos${ocultos?` (${ocultos} sin precio no se muestran)`:''}${sinFoto?` · ${sinFoto} sin foto: volvé a cargarles la foto en el producto`:''} — ${new Date().toLocaleString('es-AR')}`;
   } catch(e) {
     console.error(e); estado.textContent = 'No se pudo publicar: ' + e.message;
   } finally { btn.disabled = false; }
