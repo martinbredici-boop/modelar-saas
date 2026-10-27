@@ -578,8 +578,9 @@
         <div id="b2-importar-wrap" style="display:none;margin-top:12px">
           <button class="btn" id="b2-btn-importar" onclick="b2ImportarCatalogo()" style="width:100%"><i class="ti ti-download"></i> <span id="b2-importar-label">Importar catálogo Yingfei</span></button>
         </div>
-        <label style="margin-top:16px">Tienda web — precios de venta ($/m²)</label>
-        <p class="list-detail" style="margin-bottom:6px">Se guardan al salir de cada campo. Los productos sin precio no se publican en la tienda.</p>
+        <label style="margin-top:16px">Tienda web — línea y precio de venta ($/m²)</label>
+        <p class="list-detail" style="margin-bottom:6px">Se guardan al salir de cada campo. La línea agrupa los productos en la tienda. Los productos sin precio no se publican.</p>
+        <datalist id="b2-lineas"></datalist>
         <div id="b2-tienda-precios" style="max-height:420px;overflow-y:auto;border:1px solid #eee;border-radius:8px"></div>
         <button class="btn btn-primary" id="b2-btn-tienda" onclick="b2PublicarTienda()" style="width:100%;margin-top:10px"><i class="ti ti-world-upload"></i> Publicar en la tienda</button>
         <p class="list-detail" id="b2-tienda-estado" style="margin-top:6px">Copia nombre, medidas, foto y precio a la tienda online. No publica costos ni proveedor.</p>
@@ -594,13 +595,16 @@
         <div class="solo-b2" style="display:none">
           <div class="row">
             <div><label>SKU</label><input type="text" id="prod-sku" placeholder="Automático (B2-0xx)" /></div>
+            <div><label>Línea</label><input type="text" id="prod-linea" list="b2-lineas" placeholder="ej: Stackbond" /></div>
+          </div>
+          <div class="row">
             <div><label>Costo USD/m²</label><input type="number" id="prod-costo-usd" placeholder="ej: 29.43" step="0.01" inputmode="decimal" /></div>
+            <div><label>Peso por caja (kg)</label><input type="number" id="prod-peso-caja" placeholder="ej: 23" step="0.1" inputmode="decimal" /></div>
           </div>
           <div class="row">
             <div><label>Medida pieza</label><input type="text" id="prod-medida-pieza" placeholder="ej: 22x145 mm" /></div>
             <div><label>Medida malla</label><input type="text" id="prod-medida-malla" placeholder="ej: 296x300 mm" /></div>
           </div>
-          <label>Peso por caja (kg)</label><input type="number" id="prod-peso-caja" placeholder="ej: 23" step="0.1" inputmode="decimal" />
           <label>Foto</label>
           <div style="display:flex;align-items:center;gap:10px">
             <img id="prod-foto-preview" style="display:none;width:56px;height:56px;object-fit:cover;border-radius:6px;border:1px solid #eee" />
@@ -1503,6 +1507,7 @@ async function guardarProducto() {
 function b2CargarCampos(p, duplicado) {
   if(!esB2()) return;
   document.getElementById('prod-sku').value = duplicado ? '' : (p.sku||'');
+  document.getElementById('prod-linea').value = p.linea||'';
   document.getElementById('prod-costo-usd').value = p.costo_usd||'';
   document.getElementById('prod-peso-caja').value = p.peso_kg_caja||'';
   document.getElementById('prod-medida-pieza').value = p.medida_pieza||'';
@@ -1514,7 +1519,7 @@ function b2CargarCampos(p, duplicado) {
 }
 function b2LimpiarCampos() {
   if(!esB2()) return;
-  ['prod-sku','prod-costo-usd','prod-peso-caja','prod-medida-pieza','prod-medida-malla','prod-foto'].forEach(id=>document.getElementById(id).value='');
+  ['prod-sku','prod-linea','prod-costo-usd','prod-peso-caja','prod-medida-pieza','prod-medida-malla','prod-foto'].forEach(id=>document.getElementById(id).value='');
   prodFotoNueva = null; prodFotoActual = null;
   document.getElementById('prod-foto-preview').style.display = 'none';
 }
@@ -1546,7 +1551,7 @@ async function prodFotoElegida(input) {
 }
 function b2DatosProducto() {
   const sku = document.getElementById('prod-sku').value.trim() || b2SiguienteSku();
-  const datos = { sku, costo_usd: parseFloat(document.getElementById('prod-costo-usd').value)||0,
+  const datos = { sku, linea: document.getElementById('prod-linea').value.trim().replace(/\s+/g,' '), costo_usd: parseFloat(document.getElementById('prod-costo-usd').value)||0,
     peso_kg_caja: parseFloat(document.getElementById('prod-peso-caja').value)||0,
     medida_pieza: document.getElementById('prod-medida-pieza').value.trim(),
     medida_malla: document.getElementById('prod-medida-malla').value.trim() };
@@ -1565,26 +1570,46 @@ async function b2GuardarTC() {
 function b2ProductosTienda() {
   return [...productos].sort((a,b)=>(a.sku||a.nombre).localeCompare(b.sku||b.nombre,'es',{numeric:true}));
 }
+// Línea del producto (ej. "Granítico 10x10", "Stackbond"): agrupa y filtra los productos en la tienda
+function b2Lineas() {
+  return [...new Set(productos.map(p=>(p.linea||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+}
+function b2RenderDatalistLineas() {
+  const dl = document.getElementById('b2-lineas'); if(!dl) return;
+  dl.innerHTML = b2Lineas().map(l=>`<option value="${l.replace(/"/g,'&quot;')}"></option>`).join('');
+}
 function b2RenderPreciosTienda() {
   const el = document.getElementById('b2-tienda-precios'); if(!el || !esB2()) return;
+  b2RenderDatalistLineas();
   const lista = b2ProductosTienda();
-  const inputs = [...el.querySelectorAll('input[data-id]')];
+  const filas = [...el.querySelectorAll('[data-fila]')];
   // Si la lista no cambió, solo refresca valores: rearmarla le saca el foco a quien está tipeando
-  if(inputs.length === lista.length && inputs.every((inp,i)=>inp.dataset.id===lista[i].id)) {
-    inputs.forEach((inp,i)=>{ if(inp!==document.activeElement) inp.value = lista[i].precio_tienda_m2||''; });
+  if(filas.length === lista.length && filas.every((f,i)=>f.dataset.fila===lista[i].id)) {
+    filas.forEach((f,i)=>{
+      const lin = f.querySelector('[data-campo=linea]'), pre = f.querySelector('[data-campo=precio]');
+      if(lin!==document.activeElement) lin.value = lista[i].linea||'';
+      if(pre!==document.activeElement) pre.value = lista[i].precio_tienda_m2||'';
+    });
     return;
   }
   el.innerHTML = lista.length ? lista.map(p=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #f2f2f2">
-      ${p.fotoUrl?`<img src="${p.fotoUrl}" loading="lazy" style="width:36px;height:36px;object-fit:cover;border-radius:4px;flex-shrink:0" />`:''}
-      <div style="flex:1;min-width:0"><div class="list-name" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.nombre}</div></div>
-      <input type="number" data-id="${p.id}" value="${p.precio_tienda_m2||''}" placeholder="Sin precio" min="0" step="1" inputmode="numeric"
-        onchange="b2GuardarPrecioTienda('${p.id}', this.value)" style="width:120px;margin:0;text-align:right" />
+    <div data-fila="${p.id}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-bottom:1px solid #f2f2f2">
+      ${p.fotoUrl?`<img src="${p.fotoUrl}" loading="lazy" style="width:40px;height:40px;object-fit:cover;border-radius:4px;flex-shrink:0" />`:''}
+      <div style="flex:1;min-width:0">
+        <div class="list-name" style="font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.nombre}</div>
+        <input type="text" data-campo="linea" list="b2-lineas" value="${(p.linea||'').replace(/"/g,'&quot;')}" placeholder="Línea (ej: Stackbond)"
+          onchange="b2GuardarLineaTienda('${p.id}', this.value)" style="margin:4px 0 0;padding:4px 8px;font-size:12px;height:auto" />
+      </div>
+      <input type="number" data-campo="precio" value="${p.precio_tienda_m2||''}" placeholder="Sin precio" min="0" step="1" inputmode="numeric"
+        onchange="b2GuardarPrecioTienda('${p.id}', this.value)" style="width:110px;margin:0;text-align:right" />
     </div>`).join('') : '<div class="empty">Aún no hay productos.</div>';
 }
 async function b2GuardarPrecioTienda(id, valor) {
   const precio = Math.max(0, Math.round(parseFloat(valor)||0));
   await edb().collection('productos').doc(id).update({ precio_tienda_m2: precio });
+}
+async function b2GuardarLineaTienda(id, valor) {
+  await edb().collection('productos').doc(id).update({ linea: valor.trim().replace(/\s+/g,' ') });
 }
 // Las fotos del proveedor traen su código impreso arriba (ej. "Y22F801", ~14% del alto): se recorta
 // antes de publicar para que no llegue a la tienda. La foto guardada en el producto no se toca.
@@ -1623,14 +1648,21 @@ async function b2PublicarTienda() {
     const vigentes = new Set(aPublicar.map(p=>p.id));
     const ops = [];
     publicados.docs.forEach(d => { if(!vigentes.has(d.id)) ops.push(b => b.delete(d.ref)); });
+    // Los productos importados antes de mover las fotos a Firestore tienen un enlace de Storage, que no
+    // permite recortar (sin CORS): para esos se usa la misma foto del catálogo Yingfei, buscada por SKU.
+    const catalogo = await fetch(B2_CATALOGO_URL).then(r=>r.json()).catch(()=>[]);
+    const fotoCatalogo = Object.fromEntries(catalogo.filter(c=>c.sku&&c.foto).map(c=>[c.sku, c.foto]));
     let listas = 0;
     estado.textContent = `Preparando fotos… 0/${aPublicar.length}`;
-    const fotos = await Promise.all(aPublicar.map(p => b2RecortarFotoTienda(p.fotoUrl).then(f => {
-      estado.textContent = `Preparando fotos… ${++listas}/${aPublicar.length}`; return f;
-    })));
+    const fotos = await Promise.all(aPublicar.map(async p => {
+      let f = await b2RecortarFotoTienda(p.fotoUrl);
+      if(!f && fotoCatalogo[p.sku]) f = await b2RecortarFotoTienda(fotoCatalogo[p.sku]);
+      estado.textContent = `Preparando fotos… ${++listas}/${aPublicar.length}`;
+      return f;
+    }));
     const sinFoto = aPublicar.filter((p,i)=>p.fotoUrl && !fotos[i]).length;
     aPublicar.forEach((p, i) => ops.push(b => b.set(tienda.collection('productos').doc(p.id), {
-      nombre: p.nombre, sku: p.sku||'', descripcion: p.descripcion||'',
+      nombre: p.nombre, sku: p.sku||'', linea: p.linea||'', descripcion: p.descripcion||'',
       medida_pieza: p.medida_pieza||'', medida_malla: p.medida_malla||'',
       m2_por_caja: p.m2_por_caja||0, piezas_por_caja: p.piezas_por_caja||0, peso_kg_caja: p.peso_kg_caja||0,
       foto: fotos[i], precio_m2: p.precio_tienda_m2, web: p.web!==false
@@ -1720,7 +1752,7 @@ function renderProductos() {
         <div style="flex:1;min-width:0;">
           <div class="list-name">${p.nombre}</div>
           ${importado
-            ?`<div class="list-detail">${p.sku?'SKU '+p.sku:''}${p.codigoProveedor?' · Prov. '+p.codigoProveedor:''}${p.m2_por_caja?' · '+p.m2_por_caja+' m²/caja':''}${p.peso_kg_caja?' · '+p.peso_kg_caja+' kg/caja':''}</div>
+            ?`<div class="list-detail">${p.sku?'SKU '+p.sku:''}${p.linea?' · Línea '+p.linea:''}${p.codigoProveedor?' · Prov. '+p.codigoProveedor:''}${p.m2_por_caja?' · '+p.m2_por_caja+' m²/caja':''}${p.peso_kg_caja?' · '+p.peso_kg_caja+' kg/caja':''}</div>
               ${p.medida_pieza||p.medida_malla?`<div class="list-detail">${p.medida_pieza?'Pieza '+p.medida_pieza:''}${p.medida_pieza&&p.medida_malla?' · ':''}${p.medida_malla?'Malla '+p.medida_malla:''}</div>`:''}
               ${p.costo_usd?`<div class="list-detail">Costo/m²: <strong>USD ${p.costo_usd.toFixed(2)}</strong>${tcUsd?` · <strong>$${costo.toLocaleString('es-AR',{maximumFractionDigits:0})}</strong>`:' · cargá el tipo de cambio'}</div>`:''}`
             :`<div class="list-detail">${p.ingredientes.length} ingr. · batch ${p.batch} · ${p.placasM2} pl/m²${p.m2dia?' · '+p.m2dia+' m²/día':''}</div>
