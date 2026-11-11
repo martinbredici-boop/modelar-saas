@@ -405,6 +405,7 @@
             <button class="btn btn-primary" onclick="empGuardarStock()" style="flex:1;padding:13px;font-size:16px"><i class="ti ti-device-floppy"></i> Guardar stock</button>
           </div>
         </div>
+        <select id="emp-stock-linea" onchange="empRenderStock()" style="display:none;width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;background:#fff;margin-bottom:10px"></select>
         <div id="emp-stock-lista"><div class="empty">Cargando stock...</div></div>
       </div>
 
@@ -886,6 +887,7 @@
           <button class="btn btn-primary" onclick="ownerGuardarStock()" style="flex:1;padding:13px;font-size:16px"><i class="ti ti-device-floppy"></i> Guardar stock</button>
         </div>
       </div>
+      <select id="owner-stock-linea" onchange="renderOwnerStock()" style="display:none;width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;background:#fff;margin-bottom:10px"></select>
       <div id="owner-stock-lista"><div class="empty">Cargando stock...</div></div>
     </div>
 
@@ -3038,29 +3040,7 @@ async function empGuardarStock() {
   alert('Stock actualizado');
 }
 
-function empRenderStock() {
-  const el = document.getElementById('emp-stock-lista'); if(!el) return;
-  if (!stockData.length) { el.innerHTML='<div class="empty">Sin stock registrado.</div>'; return; }
-  el.innerHTML = [...stockData].sort((a,b)=>a.productoNombre.localeCompare(b.productoNombre,'es')).map(s => `
-    <div class="card" style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start">
-        ${stockFotoHTML(s)}
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:15px">${s.productoNombre}</div>
-          <div style="font-size:13px;color:#555;margin-top:3px">${stockResumen(s)}</div>
-          <div style="font-size:11px;color:#aaa;margin-top:2px">Actualizado ${fmtFecha(s.ultimaActualizacion?.slice(0,10))} · ${s.actualizadoPor}</div>
-        </div>
-        <button class="btn btn-sm btn-edit" onclick="stockEditarInline('${s.id}')"><i class="ti ti-edit"></i></button>
-      </div>
-      <div id="stock-edit-${s.id}" style="display:none;margin-top:12px;padding-top:12px;border-top:1px solid #f0f0f0">
-        ${stockEditForm(s)}
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <button class="btn btn-sm" onclick="stockEditarInline('${s.id}')">Cancelar</button>
-          <button class="btn btn-primary btn-sm" onclick="stockGuardarEdicion('${s.id}')"><i class="ti ti-check"></i> Guardar</button>
-        </div>
-      </div>
-    </div>`).join('');
-}
+function empRenderStock() { renderListaStock('emp-stock-lista', 'emp-stock-linea'); }
 
 function empRenderCola() {
   const el = document.getElementById('emp-cola-lista'); if(!el) return;
@@ -3088,10 +3068,33 @@ function stockEditForm(s) {
   <div id="stock-m2-preview-${s.id}" style="font-size:13px;color:#555;margin:6px 0 10px"></div>`;
 }
 
-function renderOwnerStock() {
-  const el = document.getElementById('owner-stock-lista'); if(!el) return;
+function renderOwnerStock() { renderListaStock('owner-stock-lista', 'owner-stock-linea'); }
+
+// Línea de producto (B2) de un registro de stock, tomada del producto
+function stockLinea(s) { return (productos.find(p => p.id === s.productoId)?.linea || '').trim(); }
+const STOCK_SIN_LINEA = '__sin_linea__';
+// Arma el selector de línea con las líneas que tienen stock; se oculta si no hay ninguna
+function stockFiltroLinea(selId) {
+  const sel = document.getElementById(selId); if(!sel) return '';
+  const lineas = [...new Set(stockData.map(stockLinea).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'es'));
+  const haySinLinea = stockData.some(s => !stockLinea(s));
+  const val = sel.value;
+  sel.style.display = lineas.length ? '' : 'none';
+  if(!lineas.length) { sel.innerHTML = ''; return ''; }
+  const esc = t => t.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  sel.innerHTML = '<option value="">Todas las líneas</option>'
+    + lineas.map(l => `<option value="${esc(l)}">${esc(l)}</option>`).join('')
+    + (haySinLinea ? `<option value="${STOCK_SIN_LINEA}">Sin línea</option>` : '');
+  sel.value = [...sel.options].some(o => o.value === val) ? val : '';
+  return sel.value;
+}
+function renderListaStock(listaId, selId) {
+  const el = document.getElementById(listaId); if(!el) return;
+  const linea = stockFiltroLinea(selId);
   if (!stockData.length) { el.innerHTML='<div class="empty">Sin stock registrado aún.</div>'; return; }
-  el.innerHTML = [...stockData].sort((a,b)=>a.productoNombre.localeCompare(b.productoNombre,'es')).map(s => `
+  const lista = stockData.filter(s => !linea || (linea === STOCK_SIN_LINEA ? !stockLinea(s) : stockLinea(s) === linea));
+  if (!lista.length) { el.innerHTML='<div class="empty">No hay stock de esta línea.</div>'; return; }
+  el.innerHTML = [...lista].sort((a,b)=>a.productoNombre.localeCompare(b.productoNombre,'es')).map(s => `
     <div class="card" style="margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start">
         ${stockFotoHTML(s)}
