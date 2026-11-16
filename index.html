@@ -858,12 +858,17 @@
       <div id="lista-presupuestos-cancelados"><div class="empty">Sin presupuestos cancelados.</div></div>
     </div>
     <div id="presupuestos-vendedores" class="sub-section">
+      <div class="seg-control" id="vend-modo">
+        <button class="seg-btn active" onclick="vendSetModo('mes')">Mes</button>
+        <button class="seg-btn" onclick="vendSetModo('trimestre')">Trimestre</button>
+      </div>
       <div class="card" style="padding:12px 16px">
         <div class="row">
-          <div><label style="margin-top:0">Desde</label><input type="date" id="vend-desde" onchange="renderAnalisisVendedores()" /></div>
-          <div><label style="margin-top:0">Hasta</label><input type="date" id="vend-hasta" onchange="renderAnalisisVendedores()" /></div>
+          <div id="vend-mes-wrap"><label style="margin-top:0">Mes</label><select id="vend-mes" onchange="renderAnalisisVendedores()" style="width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;background:#fff"><option value="0">Enero</option><option value="1">Febrero</option><option value="2">Marzo</option><option value="3">Abril</option><option value="4">Mayo</option><option value="5">Junio</option><option value="6">Julio</option><option value="7">Agosto</option><option value="8">Septiembre</option><option value="9">Octubre</option><option value="10">Noviembre</option><option value="11">Diciembre</option></select></div>
+          <div id="vend-trim-wrap" style="display:none"><label style="margin-top:0">Trimestre</label><select id="vend-trim" onchange="renderAnalisisVendedores()" style="width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;background:#fff"><option value="0">1° (ene–mar)</option><option value="1">2° (abr–jun)</option><option value="2">3° (jul–sep)</option><option value="3">4° (oct–dic)</option></select></div>
+          <div><label style="margin-top:0">Año</label><input type="number" id="vend-anio" inputmode="numeric" onchange="renderAnalisisVendedores()" /></div>
         </div>
-        <p class="list-detail" style="margin-top:6px">Según la fecha del presupuesto.</p>
+        <p class="list-detail" style="margin-top:6px">Según la fecha del presupuesto. No incluye presupuestos sin vendedor asignado.</p>
       </div>
       <div id="vendedores-resultado"></div>
     </div>
@@ -2558,14 +2563,28 @@ function ptoRenderVendedores(extra) {
   sel.value = val;
 }
 
+let vendModo = 'mes';
+function vendSetModo(modo) {
+  vendModo = modo;
+  document.querySelectorAll('#vend-modo .seg-btn').forEach((b,i)=>b.classList.toggle('active',['mes','trimestre'][i]===modo));
+  document.getElementById('vend-mes-wrap').style.display  = modo==='mes' ? '' : 'none';
+  document.getElementById('vend-trim-wrap').style.display = modo==='trimestre' ? '' : 'none';
+  renderAnalisisVendedores();
+}
 function renderAnalisisVendedores() {
   const el = document.getElementById('vendedores-resultado'); if(!el) return;
-  const dEl = document.getElementById('vend-desde'), hEl = document.getElementById('vend-hasta');
-  if(!dEl.value) { const d = new Date(); dEl.value = d.getFullYear()+'-01-01'; }
-  if(!hEl.value) hEl.value = hoy();
-  const desde = dEl.value, hasta = hEl.value;
-  const lista = presupuestosCache.filter(p => (p.fecha||'') >= desde && (p.fecha||'') <= hasta);
-  if(!lista.length) { el.innerHTML = '<div class="empty">Sin presupuestos en ese período.</div>'; return; }
+  const anioEl = document.getElementById('vend-anio'), mesEl = document.getElementById('vend-mes'), trimEl = document.getElementById('vend-trim');
+  if(!anioEl.value) {  // primera vez: mes y trimestre actuales
+    const now = new Date();
+    anioEl.value = now.getFullYear(); mesEl.value = now.getMonth(); trimEl.value = Math.floor(now.getMonth()/3);
+  }
+  const anio = parseInt(anioEl.value) || new Date().getFullYear();
+  const mIni = vendModo==='mes' ? parseInt(mesEl.value) : parseInt(trimEl.value)*3;
+  const mFin = vendModo==='mes' ? mIni : mIni+2;
+  const pad = n => String(n).padStart(2,'0');
+  const desde = `${anio}-${pad(mIni+1)}-01`, hasta = `${anio}-${pad(mFin+1)}-31`;
+  const lista = presupuestosCache.filter(p => p.vendedor && (p.fecha||'') >= desde && (p.fecha||'') <= hasta);
+  if(!lista.length) { el.innerHTML = '<div class="empty">Sin presupuestos con vendedor en ese período.</div>'; return; }
   const esConf = p => p.estado === 'confirmado' || p.estado === 'entregado';
   const porV = {};
   lista.forEach(p => {
@@ -2590,7 +2609,7 @@ function renderAnalisisVendedores() {
       </div>
     </div>
     <div class="card"><div class="card-title" style="margin-bottom:12px">Ventas confirmadas por vendedor</div>
-      ${filas.map(([k,v]) => `<div class="bar-wrap"><span class="bar-label" title="${k||'Sin asignar'}">${nombreVendedor(k)}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.round(v.montoConf/maxConf*100)}%"></div></div><span class="bar-val">${fmtMonto(v.montoConf)}</span></div>`).join('')}
+      ${filas.map(([k,v]) => `<div class="bar-wrap"><span class="bar-label" title="${k}">${nombreVendedor(k)}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.round(v.montoConf/maxConf*100)}%"></div></div><span class="bar-val">${fmtMonto(v.montoConf)}</span></div>`).join('')}
     </div>
     ${filas.map(([k,v]) => `
     <div class="card" style="padding:12px 16px">
