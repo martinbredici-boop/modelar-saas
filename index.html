@@ -784,6 +784,7 @@
       <button class="sub-tab" onclick="showSub('presupuestos','enviados')">Enviados</button>
       <button class="sub-tab" onclick="showSub('presupuestos','confirmados')">Confirmados</button>
       <button class="sub-tab" onclick="showSub('presupuestos','cancelados')">Cancelados</button>
+      <button class="sub-tab" onclick="showSub('presupuestos','vendedores')">Vendedores</button>
     </div></div>
 
     <div id="presupuestos-nuevo" class="sub-section active">
@@ -800,6 +801,8 @@
         <label>Cliente</label><input type="text" id="pto-cliente" placeholder="Nombre del cliente" />
         <label>Teléfono / Email</label><input type="text" id="pto-tel" placeholder="11 1234-5678" />
         <label>Dirección de entrega</label><input type="text" id="pto-direccion" placeholder="ej: Av. Corrientes 1234, CABA" />
+        <label>Vendedor</label>
+        <select id="pto-vendedor" style="width:100%;padding:9px 10px;border:1px solid #ddd;border-radius:8px;font-family:inherit;font-size:14px;background:#fff"><option value="">Sin asignar</option></select>
       </div>
 
       <!-- Items -->
@@ -853,6 +856,16 @@
     </div>
     <div id="presupuestos-cancelados" class="sub-section">
       <div id="lista-presupuestos-cancelados"><div class="empty">Sin presupuestos cancelados.</div></div>
+    </div>
+    <div id="presupuestos-vendedores" class="sub-section">
+      <div class="card" style="padding:12px 16px">
+        <div class="row">
+          <div><label style="margin-top:0">Desde</label><input type="date" id="vend-desde" onchange="renderAnalisisVendedores()" /></div>
+          <div><label style="margin-top:0">Hasta</label><input type="date" id="vend-hasta" onchange="renderAnalisisVendedores()" /></div>
+        </div>
+        <p class="list-detail" style="margin-top:6px">Según la fecha del presupuesto.</p>
+      </div>
+      <div id="vendedores-resultado"></div>
     </div>
   </div><!-- /presupuestos -->
 
@@ -1131,6 +1144,7 @@ function cerrarSesion() { auth.signOut(); hide('screen-admin'); }
 
 // ── LISTENERS ─────────────────────────────────────────────────
 function setupOwnerListeners() {
+  cargarVendedores();
   unsubs.push(edb().collection('materiales').onSnapshot(snap => {
     materiales = snap.docs.map(d => ({id:d.id,...d.data()}));
     renderMateriales(); renderIngredientesForm(); actualizarSelectProducto(); renderStockMateriales(); empRenderStockMateriales();
@@ -1165,7 +1179,7 @@ function setupOwnerListeners() {
     presupuestosCache = lista;
     renderPresupuestosTabs(lista);
     renderPedidosDesdePresupuestos(lista);
-    renderCola();
+    renderCola(); ptoRenderVendedores(); renderAnalisisVendedores();
     window._ptoNextNum = lista.length ? lista[0].numero + 1 : 304;
     document.getElementById('pto-numero-badge').textContent = 'Nº ' + window._ptoNextNum;
   }));
@@ -1253,7 +1267,7 @@ function showMain(tab) {
   if(tab==='descargas') renderDescargas();
 }
 function showSub(main, sub) {
-  const MAP = { costos:['materiales','operarios','productos','calcular'], gastos:['cargar','lista','analisis'], produccion:['carga','resumen'], presupuestos:['nuevo','historial'], stock:['stock','materiasprimas','pedidos','cola'], descargas:[] };
+  const MAP = { costos:['materiales','operarios','productos','calcular'], gastos:['cargar','lista','analisis'], produccion:['carga','resumen'], presupuestos:['nuevo','enviados','confirmados','cancelados','vendedores'], stock:['stock','materiasprimas','pedidos','cola'], descargas:[] };
   const parent = document.getElementById('main-'+main);
   parent.querySelectorAll('.sub-tab').forEach((b,i)=>b.classList.toggle('active', MAP[main][i]===sub));
   parent.querySelectorAll('.sub-section').forEach(s=>s.classList.remove('active'));
@@ -1262,6 +1276,7 @@ function showSub(main, sub) {
   if(main==='gastos'&&sub==='lista')    renderListaGastos();
   if(main==='gastos'&&sub==='analisis') renderAnalisis();
   if(main==='produccion'&&sub==='resumen') renderDiario();
+  if(main==='presupuestos'&&sub==='vendedores') renderAnalisisVendedores();
 }
 function showResumen(v) {
   document.querySelectorAll('#produccion-resumen .seg-btn').forEach((b,i)=>b.classList.toggle('active',['diario','semanal','mensual'][i]===v));
@@ -2273,6 +2288,8 @@ function ptoInit() {
   }
   if(!document.getElementById('pto-nota').value)
     document.getElementById('pto-nota').value = 'El presente presupuesto no incluye instalación · NO INCLUYE IVA';
+  ptoRenderVendedores();
+  if(!ptoEditandoId && !document.getElementById('pto-vendedor').value) document.getElementById('pto-vendedor').value = vendedorPorDefecto();
   if(!ptoItems.length) ptoAgregarItem();
 }
 
@@ -2356,6 +2373,7 @@ function ptoRecolectar() {
     cliente:     document.getElementById('pto-cliente').value.trim(),
     tel:         document.getElementById('pto-tel').value.trim(),
     direccion:   document.getElementById('pto-direccion').value.trim(),
+    vendedor:    document.getElementById('pto-vendedor').value,
     items:       ptoItems.map(it=>({...it})),
     descPct, descMonto, envioMonto,
     envioDesc:   document.getElementById('pto-envio-desc').value.trim(),
@@ -2401,7 +2419,7 @@ async function ptoGuardarAdelanto(id, adelanto) {
 function ptoCancelar() {
   ptoEditandoId = null; window._ptoEditNum = null;
   ptoItems = [];
-  ['pto-fecha','pto-valido','pto-cliente','pto-tel','pto-direccion','pto-desc-pct','pto-envio-desc','pto-envio-monto'].forEach(id=>document.getElementById(id).value='');
+  ['pto-fecha','pto-valido','pto-cliente','pto-tel','pto-direccion','pto-vendedor','pto-desc-pct','pto-envio-desc','pto-envio-monto'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('pto-nota').value='';
   document.getElementById('pto-form-title').textContent = 'Nuevo presupuesto';
   document.getElementById('pto-btn-cancelar').style.display = 'none';
@@ -2416,6 +2434,8 @@ function ptoEditar(id, data) {
   document.getElementById('pto-cliente').value     = data.cliente||'';
   document.getElementById('pto-tel').value         = data.tel||'';
   document.getElementById('pto-direccion').value   = data.direccion||'';
+  ptoRenderVendedores(data.vendedor||'');
+  document.getElementById('pto-vendedor').value    = data.vendedor||'';
   document.getElementById('pto-desc-pct').value    = data.descPct||'';
   document.getElementById('pto-envio-desc').value  = data.envioDesc||'';
   document.getElementById('pto-envio-monto').value = data.envioMonto||'';
@@ -2467,6 +2487,7 @@ function renderPresupuestosTabs(lista) {
             <span class="badge">${fmtFecha(p.fecha)}</span>
           </div>
           <div class="list-detail" style="margin-top:2px">${p.cliente||'—'}${p.tel?' · '+p.tel:''}</div>
+          ${p.vendedor?`<div class="list-detail" style="margin-top:2px"><i class="ti ti-user"></i> ${nombreVendedor(p.vendedor)}</div>`:''}
           <div style="margin-top:4px;font-size:14px;font-weight:600;color:#16a34a">${fmtMonto(p.total)}</div>
         </div>
         <div class="item-actions" style="flex-shrink:0">
@@ -2505,6 +2526,88 @@ function renderPresupuestosTabs(lista) {
   set('lista-presupuestos-enviados',    enviados,    'enviados',    'Sin presupuestos enviados.');
   set('lista-presupuestos-confirmados', confirmados, 'confirmados', 'Sin presupuestos confirmados.');
   set('lista-presupuestos-cancelados',  cancelados,  'cancelados',  'Sin presupuestos cancelados.');
+}
+
+// ── VENDEDORES ────────────────────────────────────────────────
+// Los vendedores posibles son los usuarios de la empresa. En el presupuesto se guarda el email.
+let vendedoresEmpresa = [];
+async function cargarVendedores() {
+  try {
+    const snap = await db.collection('usuarios').where('empresaId','==',currentEmpresaId).get();
+    vendedoresEmpresa = snap.docs.map(d => d.data()).filter(u => u.email).map(u => ({ email: u.email.toLowerCase(), activa: u.activa !== false }));
+  } catch(e) {
+    console.warn('No se pudo leer la lista de usuarios de la empresa', e);
+    vendedoresEmpresa = [];
+  }
+  ptoRenderVendedores(); renderAnalisisVendedores();
+}
+function nombreVendedor(email) { return email ? email.split('@')[0] : 'Sin asignar'; }
+function vendedorPorDefecto() { return (auth.currentUser?.email || '').toLowerCase(); }
+// Usuarios activos + el usuario actual + vendedores ya usados en presupuestos (por si se borró el usuario)
+function listaVendedores(extra) {
+  const set = new Set(vendedoresEmpresa.filter(u => u.activa).map(u => u.email));
+  if(vendedorPorDefecto()) set.add(vendedorPorDefecto());
+  presupuestosCache.forEach(p => { if(p.vendedor) set.add(p.vendedor); });
+  if(extra) set.add(extra);
+  return [...set].sort((a,b) => nombreVendedor(a).localeCompare(nombreVendedor(b),'es'));
+}
+function ptoRenderVendedores(extra) {
+  const sel = document.getElementById('pto-vendedor'); if(!sel) return;
+  const val = extra !== undefined ? extra : sel.value;
+  sel.innerHTML = '<option value="">Sin asignar</option>' + listaVendedores(val).map(e => `<option value="${e}">${nombreVendedor(e)} (${e})</option>`).join('');
+  sel.value = val;
+}
+
+function renderAnalisisVendedores() {
+  const el = document.getElementById('vendedores-resultado'); if(!el) return;
+  const dEl = document.getElementById('vend-desde'), hEl = document.getElementById('vend-hasta');
+  if(!dEl.value) { const d = new Date(); dEl.value = d.getFullYear()+'-01-01'; }
+  if(!hEl.value) hEl.value = hoy();
+  const desde = dEl.value, hasta = hEl.value;
+  const lista = presupuestosCache.filter(p => (p.fecha||'') >= desde && (p.fecha||'') <= hasta);
+  if(!lista.length) { el.innerHTML = '<div class="empty">Sin presupuestos en ese período.</div>'; return; }
+  const esConf = p => p.estado === 'confirmado' || p.estado === 'entregado';
+  const porV = {};
+  lista.forEach(p => {
+    const k = p.vendedor || '';
+    const v = porV[k] ||= { cant:0, monto:0, conf:0, montoConf:0, canc:0, pend:0, montoPend:0, saldo:0 };
+    v.cant++; v.monto += p.total||0;
+    if(esConf(p)) { v.conf++; v.montoConf += p.total||0; v.saldo += Math.max(0,(p.total||0)-(p.adelanto||0)); }
+    else if(p.estado === 'cancelado') v.canc++;
+    else { v.pend++; v.montoPend += p.total||0; }
+  });
+  const filas = Object.entries(porV).sort((a,b) => b[1].montoConf - a[1].montoConf || b[1].monto - a[1].monto);
+  const tot = filas.reduce((t,[,v]) => { t.cant+=v.cant; t.conf+=v.conf; t.montoConf+=v.montoConf; t.monto+=v.monto; return t; }, {cant:0,conf:0,montoConf:0,monto:0});
+  const pct = (a,b) => b ? Math.round(a/b*100)+'%' : '—';
+  const maxConf = Math.max(1, ...filas.map(([,v]) => v.montoConf));
+  el.innerHTML = `
+    <div class="card"><div class="card-title" style="margin-bottom:12px">Resumen del período</div>
+      <div class="metrics-grid3">
+        <div class="metric"><div class="metric-label">Presupuestos</div><div class="metric-value" style="font-size:16px">${tot.cant}</div></div>
+        <div class="metric"><div class="metric-label">Presupuestado</div><div class="metric-value blue" style="font-size:16px">${fmtMonto(tot.monto)}</div></div>
+        <div class="metric"><div class="metric-label">Vendido</div><div class="metric-value green" style="font-size:16px">${fmtMonto(tot.montoConf)}</div></div>
+        <div class="metric"><div class="metric-label">Conversión</div><div class="metric-value" style="font-size:16px">${pct(tot.conf,tot.cant)}</div></div>
+      </div>
+    </div>
+    <div class="card"><div class="card-title" style="margin-bottom:12px">Ventas confirmadas por vendedor</div>
+      ${filas.map(([k,v]) => `<div class="bar-wrap"><span class="bar-label" title="${k||'Sin asignar'}">${nombreVendedor(k)}</span><div class="bar-track"><div class="bar-fill" style="width:${Math.round(v.montoConf/maxConf*100)}%"></div></div><span class="bar-val">${fmtMonto(v.montoConf)}</span></div>`).join('')}
+    </div>
+    ${filas.map(([k,v]) => `
+    <div class="card" style="padding:12px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+        <span class="list-name">${nombreVendedor(k)}</span>
+        <span class="list-detail">${k}</span>
+      </div>
+      <div class="metrics-grid3">
+        <div class="metric"><div class="metric-label">Presupuestos</div><div class="metric-value" style="font-size:16px">${v.cant}</div></div>
+        <div class="metric"><div class="metric-label">Confirmados</div><div class="metric-value green" style="font-size:16px">${v.conf}</div></div>
+        <div class="metric"><div class="metric-label">Conversión</div><div class="metric-value" style="font-size:16px">${pct(v.conf,v.cant)}</div></div>
+        <div class="metric"><div class="metric-label">Vendido</div><div class="metric-value green" style="font-size:16px">${fmtMonto(v.montoConf)}</div></div>
+        <div class="metric"><div class="metric-label">Ticket promedio</div><div class="metric-value" style="font-size:16px">${v.conf ? fmtMonto(v.montoConf/v.conf) : '—'}</div></div>
+        <div class="metric"><div class="metric-label">Presupuestado</div><div class="metric-value blue" style="font-size:16px">${fmtMonto(v.monto)}</div></div>
+      </div>
+      <div class="list-detail" style="margin-top:8px">${v.pend} pendiente${v.pend===1?'':'s'} (${fmtMonto(v.montoPend)}) · ${v.canc} cancelado${v.canc===1?'':'s'}${v.saldo>0?` · Saldo a cobrar <strong style="color:#dc2626">${fmtMonto(v.saldo)}</strong>`:''}</div>
+    </div>`).join('')}`;
 }
 
 function renderPedidosDesdePresupuestos(lista) {
