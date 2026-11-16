@@ -783,6 +783,7 @@
       <button class="sub-tab active" onclick="showSub('presupuestos','nuevo')">Nuevo</button>
       <button class="sub-tab" onclick="showSub('presupuestos','enviados')">Enviados</button>
       <button class="sub-tab" onclick="showSub('presupuestos','confirmados')">Confirmados</button>
+      <button class="sub-tab" onclick="showSub('presupuestos','entregados')">Entregados</button>
       <button class="sub-tab" onclick="showSub('presupuestos','cancelados')">Cancelados</button>
       <button class="sub-tab" onclick="showSub('presupuestos','vendedores')">Vendedores</button>
     </div></div>
@@ -853,6 +854,9 @@
     </div>
     <div id="presupuestos-confirmados" class="sub-section">
       <div id="lista-presupuestos-confirmados"><div class="empty">Sin presupuestos confirmados.</div></div>
+    </div>
+    <div id="presupuestos-entregados" class="sub-section">
+      <div id="lista-presupuestos-entregados"><div class="empty">Sin presupuestos entregados.</div></div>
     </div>
     <div id="presupuestos-cancelados" class="sub-section">
       <div id="lista-presupuestos-cancelados"><div class="empty">Sin presupuestos cancelados.</div></div>
@@ -1272,7 +1276,7 @@ function showMain(tab) {
   if(tab==='descargas') renderDescargas();
 }
 function showSub(main, sub) {
-  const MAP = { costos:['materiales','operarios','productos','calcular'], gastos:['cargar','lista','analisis'], produccion:['carga','resumen'], presupuestos:['nuevo','enviados','confirmados','cancelados','vendedores'], stock:['stock','materiasprimas','pedidos','cola'], descargas:[] };
+  const MAP = { costos:['materiales','operarios','productos','calcular'], gastos:['cargar','lista','analisis'], produccion:['carga','resumen'], presupuestos:['nuevo','enviados','confirmados','entregados','cancelados','vendedores'], stock:['stock','materiasprimas','pedidos','cola'], descargas:[] };
   const parent = document.getElementById('main-'+main);
   parent.querySelectorAll('.sub-tab').forEach((b,i)=>b.classList.toggle('active', MAP[main][i]===sub));
   parent.querySelectorAll('.sub-section').forEach(s=>s.classList.remove('active'));
@@ -2463,6 +2467,7 @@ function renderPresupuestosTabs(lista) {
   const enviados    = lista.filter(p => !p.estado || p.estado === 'enviado');
   const confirmados = lista.filter(p => p.estado === 'confirmado');
   const cancelados  = lista.filter(p => p.estado === 'cancelado');
+  const entregados  = lista.filter(p => p.estado === 'entregado');
 
   const cardPto = (p, seccion) => {
     const pJson = JSON.stringify(p).replace(/"/g,'&quot;');
@@ -2474,6 +2479,8 @@ function renderPresupuestosTabs(lista) {
         <button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','cancelado')" style="background:#ef4444;color:#fff;border-color:#ef4444" title="Cancelar"><i class="ti ti-x"></i> Cancelar</button>`;
     } else if (seccion === 'confirmados') {
       botones = `<button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','enviado')" title="Volver a enviados"><i class="ti ti-rotate-left"></i> Volver a enviados</button>`;
+    } else if (seccion === 'entregados') {
+      botones = `<button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','confirmado')" title="Volver a confirmados"><i class="ti ti-rotate-left"></i> Volver a confirmados</button>`;
     } else {
       botones = `<button class="btn btn-sm" onclick="ptoCambiarEstadoPto('${p.id}','enviado')" title="Reactivar"><i class="ti ti-rotate-left"></i> Reactivar</button>`;
     }
@@ -2505,7 +2512,7 @@ function renderPresupuestosTabs(lista) {
         ${itemsDetalle.length?`<span style="cursor:pointer;color:#7c3aed;text-decoration:underline" onclick="const d=document.getElementById('${uid}');d.style.display=d.style.display==='none'?'block':'none';this.textContent=d.style.display==='block'?'ocultar detalle':'ver detalle'">ver detalle</span>`:''}
       </div>
       <div id="${uid}" style="display:none;background:#f9f7f3;border-radius:8px;padding:8px;margin-top:6px">${itemsDetalle}</div>
-      ${seccion === 'confirmados' ? `
+      ${seccion === 'confirmados' || seccion === 'entregados' ? `
       <div style="margin-top:12px;background:#f0fdf4;border-radius:10px;padding:10px 12px">
         <div style="font-size:12px;font-weight:600;color:#16a34a;margin-bottom:8px;text-transform:uppercase;letter-spacing:.04em">Pagos</div>
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -2530,6 +2537,7 @@ function renderPresupuestosTabs(lista) {
   };
   set('lista-presupuestos-enviados',    enviados,    'enviados',    'Sin presupuestos enviados.');
   set('lista-presupuestos-confirmados', confirmados, 'confirmados', 'Sin presupuestos confirmados.');
+  set('lista-presupuestos-entregados',  entregados,  'entregados',  'Sin presupuestos entregados.');
   set('lista-presupuestos-cancelados',  cancelados,  'cancelados',  'Sin presupuestos cancelados.');
 }
 
